@@ -297,6 +297,27 @@ input.invalid {
   margin-bottom: 18px;
 }
 
+/* Header row above hex grid */
+.readings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.readings-header label {
+  margin: 0;
+}
+.readings-hint {
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--amber);
+  opacity: 0.8;
+  margin: 0 0 14px;
+  text-transform: uppercase;
+}
+
 /* Hex inputs grid */
 .hex-grid {
   display: grid;
@@ -467,6 +488,13 @@ button.term.amber:hover:not(:disabled) {
   color: #000;
 }
 
+button.term.term-small {
+  font-size: 14px;
+  padding: 4px 12px;
+  letter-spacing: 1.5px;
+  border-width: 1px;
+}
+
 /* ============================================================
    STATUS LINE
    ============================================================ */
@@ -530,7 +558,11 @@ button.term.amber:hover:not(:disabled) {
 
   <div class="divider">▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓</div>
 
-  <label>SPECTRAL READINGS — 4 HEX CODES FROM RGB SENSOR:</label>
+  <div class="readings-header">
+    <label>SPECTRAL READINGS — 4 HEX CODES FROM RGB SENSOR:</label>
+    <button type="button" class="term term-small amber" id="btn-epic-palette" title="Fill the inputs with the EPIC Campus brand colors for testing">▶ LOAD EPIC TEST PALETTE</button>
+  </div>
+  <div class="readings-hint">// FOR TESTING ONLY — OVERRIDE WITH YOUR RGB SENSOR READINGS</div>
   <div class="hex-grid" id="hex-grid">
     <!-- Built by JS -->
   </div>
@@ -600,6 +632,11 @@ const PATTERNS = [
 ];
 
 const STUB_PALETTE = ['#003311', '#006622', '#00AA2B', '#00FF41'];
+
+// EPIC Campus brand palette — white, orange, navy, green. Used by the
+// "LOAD EPIC TEST PALETTE" button so students can see the app working
+// before their Arduino RGB sensor is wired up.
+const EPIC_PALETTE = ['#FFFFFF', '#E87722', '#1B3D5E', '#3E9D43'];
 
 const state = {
   callsign: '',
@@ -1376,6 +1413,18 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('btn-download').addEventListener('click', downloadLocal);
   document.getElementById('btn-transmit').addEventListener('click', transmit);
+
+  document.getElementById('btn-epic-palette').addEventListener('click', () => {
+    for (let i = 0; i < 4; i++) {
+      const inp = document.getElementById(`hex-${i}`);
+      inp.value = EPIC_PALETTE[i];
+      onHexInput(i);
+    }
+    if (!state.callsign) {
+      const cs = document.getElementById('callsign');
+      cs.focus();
+    }
+  });
 
   // Initial state
   updateLinkStatus();
