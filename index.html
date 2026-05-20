@@ -746,6 +746,7 @@ function renderMarpat(ctx, w, h, colors, seed) {
                    Math.ceil(cellW) + 1, Math.ceil(cellH) + 1);
     }
   }
+  embedEpicMark(ctx, w, h, colors, seed);
 }
 
 // ---- WOODLAND-7B :: Organic Blob --------------------------------
@@ -776,6 +777,7 @@ function renderWoodland(ctx, w, h, colors, seed) {
       drawBlob(ctx, cx, cy, r, color, rnd);
     }
   }
+  embedEpicMark(ctx, w, h, colors, seed);
 }
 
 function drawBlob(ctx, cx, cy, r, color, rnd) {
@@ -877,6 +879,7 @@ function renderFractalG(ctx, w, h, colors, seed) {
       ctx.fill();
     }
   }
+  embedEpicMark(ctx, w, h, colors, seed);
 }
 
 function pickDifferent(base, r, avoidIdx) {
@@ -926,6 +929,65 @@ function renderTerrainX(ctx, w, h, colors, seed) {
   off.getContext('2d').putImageData(img, 0, 0);
   ctx.imageSmoothingEnabled = false; // hard band edges
   ctx.drawImage(off, 0, 0, w, h);
+  embedEpicMark(ctx, w, h, colors, seed);
+}
+
+/* ====================================================================
+   EPIC CAMPUS EASTER EGG
+   A hidden silhouette of the EPIC Campus logo (the iconic semicircle
+   "sun" with W-shaped jagged mountain peaks) is stamped into every
+   pattern. Filled in the student's darkest color so it blends in as
+   a natural-looking dark patch; faint outline in their lightest
+   color so the SHAPE is recognizable if you know what to look for.
+   Position is seed-derived → RECALIBRATE moves the hidden logo.
+   ==================================================================== */
+
+function drawEpicSilhouette(ctx, x, y, w, h) {
+  ctx.beginPath();
+  // Left edge of half-circle base
+  ctx.moveTo(x + 0.00 * w, y + 0.50 * h);
+  // Top arc (Bezier semicircle) up over and back down to right edge
+  ctx.bezierCurveTo(
+    x + 0.00 * w, y + 0.02 * h,
+    x + 1.00 * w, y + 0.02 * h,
+    x + 1.00 * w, y + 0.50 * h
+  );
+  // Jagged W mountain peaks across the bottom (right → left)
+  ctx.lineTo(x + 0.88 * w, y + 0.78 * h);
+  ctx.lineTo(x + 0.72 * w, y + 0.38 * h);
+  ctx.lineTo(x + 0.55 * w, y + 0.85 * h);
+  ctx.lineTo(x + 0.40 * w, y + 0.38 * h);
+  ctx.lineTo(x + 0.22 * w, y + 0.78 * h);
+  ctx.lineTo(x + 0.10 * w, y + 0.50 * h);
+  ctx.closePath();
+}
+
+function embedEpicMark(ctx, w, h, colors, seed) {
+  // Separate RNG stream so logo placement varies independently of the
+  // pattern itself, but stays deterministic from the same seed.
+  const rnd = mulberry32((seed ^ 0xE91CCA) >>> 0);
+  const pxPerInch = w / 8.5;
+  const markW = 2.0 * pxPerInch;
+  const markH = 1.1 * pxPerInch;
+  // Place inside the middle 60% of the page (never dead-center, never edge)
+  const cx = (0.25 + rnd() * 0.5) * w;
+  const cy = (0.25 + rnd() * 0.5) * h;
+  const x  = cx - markW / 2;
+  const y  = cy - markH / 2;
+
+  const sorted = sortByLuminance(colors);
+  const fillColor    = sorted[0]; // darkest — main silhouette
+  const outlineColor = sorted[3]; // lightest — barely-there edge
+
+  ctx.save();
+  drawEpicSilhouette(ctx, x, y, markW, markH);
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+  ctx.globalAlpha = 0.22;
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = Math.max(1, pxPerInch * 0.018);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /* ====================================================================

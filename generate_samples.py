@@ -102,6 +102,62 @@ def luminance(rgb):
 
 
 # ====================================================================
+# EPIC CAMPUS EASTER EGG
+# Stamps a hidden EPIC mountain silhouette onto the rendered camo.
+# Matches the JS implementation in index.html so samples preview the
+# easter egg as students will see it.
+# ====================================================================
+
+def _epic_silhouette_path(x, y, w, h):
+    """Returns vertices to draw as a polygon: half-circle 'sun' on top,
+    jagged W mountain teeth across the bottom."""
+    pts = []
+    # Approximate Bezier semicircle with line segments
+    import math
+    steps = 32
+    for k in range(steps + 1):
+        t = k / steps
+        # Cubic Bezier from (0, 0.5) via (0, 0.02) (1, 0.02) to (1, 0.5)
+        omt = 1 - t
+        px = (3 * omt * omt * t * 0.0
+              + 3 * omt * t * t * 1.0
+              + t * t * t * 1.0)
+        py = (omt * omt * omt * 0.5
+              + 3 * omt * omt * t * 0.02
+              + 3 * omt * t * t * 0.02
+              + t * t * t * 0.5)
+        pts.append((x + px * w, y + py * h))
+    # Jagged W bottom (right to left)
+    for (nx, ny) in [(0.88, 0.78), (0.72, 0.38), (0.55, 0.85),
+                     (0.40, 0.38), (0.22, 0.78), (0.10, 0.50)]:
+        pts.append((x + nx * w, y + ny * h))
+    return pts
+
+
+def embed_epic_mark(img, w, h, palette_rgb, seed):
+    rnd = mulberry32((seed ^ 0xE91CCA) & 0xFFFFFFFF)
+    px_per_inch = w / 8.5
+    mark_w = 2.0 * px_per_inch
+    mark_h = 1.1 * px_per_inch
+    cx = (0.25 + rnd() * 0.5) * w
+    cy = (0.25 + rnd() * 0.5) * h
+    x = cx - mark_w / 2
+    y = cy - mark_h / 2
+
+    ordered = sorted(palette_rgb, key=luminance)
+    fill = ordered[0]
+    outline = ordered[3]
+
+    poly = _epic_silhouette_path(x, y, mark_w, mark_h)
+    draw = ImageDraw.Draw(img, 'RGBA')
+    draw.polygon(poly, fill=fill + (255,))
+    # Subtle 22%-opacity outline in lightest tone
+    draw.line(poly + [poly[0]], fill=outline + (56,),
+              width=max(1, int(px_per_inch * 0.018)))
+    return img
+
+
+# ====================================================================
 # MARPAT-D
 # ====================================================================
 
@@ -135,7 +191,7 @@ def render_marpat(seed):
             x1 = int((i + 1) * cell_w) + 1
             y1 = int((j + 1) * cell_h) + 1
             draw.rectangle([x0, y0, x1, y1], fill=rgb[grid[j][i]])
-    return img
+    return embed_epic_mark(img, W, H, rgb, seed)
 
 
 # ====================================================================
@@ -185,7 +241,7 @@ def render_woodland(seed):
                     y = omt * omt * mid_prev[1] + 2 * omt * t * cur[1] + t * t * mid_next[1]
                     smooth.append((x, y))
             draw.polygon(smooth, fill=color)
-    return img
+    return embed_epic_mark(img, W, H, rgbs, seed)
 
 
 # ====================================================================
@@ -237,7 +293,7 @@ def render_fractalg(seed):
             else:
                 draw.polygon([a, b, d], fill=rgbs[t1])
                 draw.polygon([a, d, c], fill=rgbs[t2])
-    return img
+    return embed_epic_mark(img, W, H, rgbs, seed)
 
 
 # ====================================================================
@@ -261,7 +317,8 @@ def render_terrainx(seed):
             elif v < 0.75: idx = 2
             else:          idx = 3
             pixels[i, j] = rgbs[idx]
-    return small.resize((W, H), Image.NEAREST)
+    big = small.resize((W, H), Image.NEAREST).convert('RGB')
+    return embed_epic_mark(big, W, H, rgbs, seed)
 
 
 # ====================================================================
