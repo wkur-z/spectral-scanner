@@ -576,20 +576,16 @@ button.term.amber:hover:not(:disabled) {
 
 <!-- jsPDF -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<!-- Google Identity Services -->
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-<!-- Google API Client -->
-<script src="https://apis.google.com/js/api.js" async defer></script>
 
 <script>
 /* ====================================================================
-   CONFIG — INSTRUCTOR EDITS THESE THREE VALUES
+   CONFIG — INSTRUCTOR EDITS THIS ONE VALUE
    ==================================================================== */
 
 const CONFIG = {
-  GOOGLE_CLIENT_ID:   'PASTE_YOUR_CLIENT_ID_HERE',
-  GOOGLE_API_KEY:     'PASTE_YOUR_API_KEY_HERE',
-  DRIVE_FOLDER_ID:    'PASTE_YOUR_SHARED_FOLDER_ID_HERE'
+  // Paste the Web App URL from your Apps Script deployment.
+  // Looks like: https://script.google.com/macros/s/AKfycb.../exec
+  APPS_SCRIPT_URL:    'PASTE_YOUR_APPS_SCRIPT_URL_HERE'
 };
 
 /* ====================================================================
@@ -611,11 +607,7 @@ const state = {
   colors: [null, null, null, null], // expanded 6-char hex with '#' or null
   pattern: 'MARPAT-D',
   seed: (Math.random() * 1e9) | 0,
-  rendered: false,
-  tokenClient: null,
-  accessToken: null,
-  gapiReady: false,
-  gisReady: false
+  rendered: false
 };
 
 /* ====================================================================
@@ -1138,17 +1130,15 @@ function downloadLocal() {
 }
 
 /* ====================================================================
-   GOOGLE DRIVE UPLOAD
+   DRIVE DROP VIA APPS SCRIPT PROXY
    ==================================================================== */
 
 function configFilled() {
-  return CONFIG.GOOGLE_CLIENT_ID && !CONFIG.GOOGLE_CLIENT_ID.startsWith('PASTE_')
-      && CONFIG.GOOGLE_API_KEY   && !CONFIG.GOOGLE_API_KEY.startsWith('PASTE_')
-      && CONFIG.DRIVE_FOLDER_ID  && !CONFIG.DRIVE_FOLDER_ID.startsWith('PASTE_');
+  return CONFIG.APPS_SCRIPT_URL && !CONFIG.APPS_SCRIPT_URL.startsWith('PASTE_');
 }
 
 function channelOnline() {
-  return configFilled() && navigator.onLine && state.gapiReady && state.gisReady;
+  return configFilled() && navigator.onLine;
 }
 
 function updateLinkStatus() {
@@ -1161,12 +1151,9 @@ function updateLinkStatus() {
     el.style.color = 'var(--amber)';
     document.getElementById('btn-transmit').title =
       'COMMAND CHANNEL OFFLINE. USE LOCAL DOWNLOAD.';
-  } else if (state.gapiReady && state.gisReady) {
+  } else {
     el.textContent = 'CMD CHANNEL READY';
     el.style.color = 'var(--green-bright)';
-  } else {
-    el.textContent = 'CONNECTING…';
-    el.style.color = 'var(--green-dim)';
   }
   updateButtonStates();
 }
@@ -1174,121 +1161,42 @@ function updateLinkStatus() {
 window.addEventListener('online',  updateLinkStatus);
 window.addEventListener('offline', updateLinkStatus);
 
-function initGAPI() {
-  if (!window.gapi) { setTimeout(initGAPI, 200); return; }
-  gapi.load('client', async () => {
-    try {
-      await gapi.client.init({
-        apiKey: CONFIG.GOOGLE_API_KEY,
-        discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
-      });
-      state.gapiReady = true;
-      updateLinkStatus();
-    } catch (e) {
-      console.error('GAPI init failed', e);
-      state.gapiReady = false;
-      updateLinkStatus();
-    }
-  });
-}
-
-function initGIS() {
-  if (!window.google || !google.accounts || !google.accounts.oauth2) {
-    setTimeout(initGIS, 200); return;
+// ArrayBuffer → base64 (chunked to avoid call-stack overflow on big PDFs)
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let bin = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
   }
-  try {
-    state.tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: CONFIG.GOOGLE_CLIENT_ID,
-      scope: 'https://www.googleapis.com/auth/drive.file',
-      callback: () => {} // overridden per request
-    });
-    state.gisReady = true;
-    // Reuse cached token if present
-    const cached = sessionStorage.getItem('spectral_token');
-    if (cached) {
-      try {
-        const t = JSON.parse(cached);
-        if (t.exp > Date.now()) state.accessToken = t.token;
-      } catch (_) {}
-    }
-    updateLinkStatus();
-  } catch (e) {
-    console.error('GIS init failed', e);
-    state.gisReady = false;
-    updateLinkStatus();
-  }
-}
-
-function requestToken() {
-  return new Promise((resolve, reject) => {
-    if (!state.tokenClient) return reject(new Error('NO_TOKEN_CLIENT'));
-    state.tokenClient.callback = (resp) => {
-      if (resp && resp.access_token) {
-        state.accessToken = resp.access_token;
-        const expSec = resp.expires_in ? resp.expires_in : 3000;
-        sessionStorage.setItem('spectral_token', JSON.stringify({
-          token: resp.access_token,
-          exp: Date.now() + expSec * 1000 - 30000
-        }));
-        resolve(resp.access_token);
-      } else {
-        reject(new Error('AUTH_DENIED'));
-      }
-    };
-    state.tokenClient.requestAccessToken({ prompt: state.accessToken ? '' : 'consent' });
-  });
+  return btoa(bin);
 }
 
 async function uploadToDrive(blob, filename) {
-  let token = state.accessToken;
-  if (!token) token = await requestToken();
-
-  const metadata = {
-    name: filename,
-    mimeType: 'application/pdf',
-    parents: [CONFIG.DRIVE_FOLDER_ID]
-  };
-
-  const boundary = 'spectral_boundary_' + Date.now().toString(36);
-  const metaPart =
-    `--${boundary}\r\n` +
-    `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
-    JSON.stringify(metadata) + `\r\n`;
-  const dataHeader =
-    `--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`;
-  const closing = `\r\n--${boundary}--`;
-
-  const pdfBytes = new Uint8Array(await blob.arrayBuffer());
-  const enc = new TextEncoder();
-  const head = enc.encode(metaPart + dataHeader);
-  const tail = enc.encode(closing);
-  const body = new Uint8Array(head.length + pdfBytes.length + tail.length);
-  body.set(head, 0);
-  body.set(pdfBytes, head.length);
-  body.set(tail, head.length + pdfBytes.length);
-
-  const url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name';
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + token,
-      'Content-Type': `multipart/related; boundary=${boundary}`
-    },
-    body
+  const arrayBuf = await blob.arrayBuffer();
+  const b64 = arrayBufferToBase64(arrayBuf);
+  const payload = JSON.stringify({
+    filename: filename,
+    pdfBase64: b64,
+    callsign: state.callsign,
+    pattern: state.pattern
   });
-
+  // Content-Type: text/plain keeps this a CORS "simple" request and avoids
+  // a preflight OPTIONS — Apps Script web apps do not respond to OPTIONS.
+  const resp = await fetch(CONFIG.APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: payload,
+    redirect: 'follow'
+  });
   if (!resp.ok) {
-    // If token expired, clear and retry once
-    if (resp.status === 401) {
-      sessionStorage.removeItem('spectral_token');
-      state.accessToken = null;
-      const t = await requestToken();
-      return uploadToDrive(blob, filename);
-    }
-    const errText = await resp.text();
-    throw new Error(`HTTP_${resp.status}: ${errText.slice(0, 120)}`);
+    throw new Error(`HTTP_${resp.status}`);
   }
-  return await resp.json();
+  const result = await resp.json();
+  if (!result.ok) {
+    throw new Error(result.error || 'UPLOAD_FAILED');
+  }
+  return result;
 }
 
 async function transmit() {
@@ -1412,14 +1320,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Boot animation
   runBoot();
-
-  // Google APIs (only if config filled)
-  if (configFilled() && navigator.onLine) {
-    initGAPI();
-    initGIS();
-  } else {
-    updateLinkStatus();
-  }
 });
 </script>
 

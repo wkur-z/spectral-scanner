@@ -6,6 +6,8 @@ pick a camo algorithm, generate a print-ready 8.5x11" pattern, and
 transmit it to a shared Google Drive folder for the instructor to batch
 print on sticker paper.
 
+**Live:** https://wkur-z.github.io/spectral-scanner/
+
 ---
 
 ## WHAT THE APP DOES
@@ -21,149 +23,117 @@ print on sticker paper.
 - Lets the student `RECALIBRATE` for a new random seed any number of
   times.
 - Exports a full-bleed 8.5x11 inch PDF at 300 DPI.
-- Uploads the PDF to a shared Google Drive folder via the student's
-  Google sign-in, OR offers a local-only `DOWNLOAD LOCAL COPY` fallback.
+- Submits the PDF directly to a Drive folder you (the instructor) own —
+  students never sign in to Google — OR offers `DOWNLOAD LOCAL COPY`
+  as a fallback.
 
 The whole thing is one `index.html` file. No build step, no server,
-no frameworks. It runs from a static host (GitHub Pages) and works
-fine on Chromebooks.
+no frameworks. Runs from GitHub Pages and works fine on Chromebooks.
 
 ---
 
 ## HOW STUDENTS USE IT
 
 1. Watch the boot sequence (`POWER-ON SELF TEST… OK`).
-2. Type a callsign — any name or codename, letters and numbers only.
+2. Type a callsign — any name or codename.
 3. Enter the four hex codes from their Arduino RGB sensor. A live
    color swatch appears next to each one. Bad codes flash amber with
    `INVALID HEX // RETRY`.
 4. Pick a camo algorithm from the four cards.
-5. Click `EXECUTE >> GENERATE PATTERN`. The preview renders inside
-   the CRT frame.
+5. Click `EXECUTE >> GENERATE PATTERN`. Preview renders in the CRT frame.
 6. Click `RECALIBRATE >> NEW SEED` as many times as they like.
-7. Click `▲ TRANSMIT TO COMMAND ▲` to upload the PDF to the shared
-   Drive folder, OR `DOWNLOAD LOCAL COPY` to save it themselves.
-
-On first transmit, a Google sign-in popup appears. After that the
-session caches the token, so resubmits are one-click.
+7. Click `▲ TRANSMIT TO COMMAND ▲` — the PDF lands in your Drive folder.
 
 ---
 
-## INSTRUCTOR SETUP — GOOGLE CLOUD
+## INSTRUCTOR SETUP — APPS SCRIPT PROXY
 
-You only do this **once** before camp. The app needs three things from
-Google: a **Client ID**, an **API Key**, and the **ID of the shared
-Drive folder** where student PDFs will land. Paste all three at the
-top of `index.html`.
+The app uses a Google Apps Script as a tiny upload receiver. You deploy
+it once, paste one URL into `index.html`, done. The script runs **as your
+account**, so all student submissions land in your folder regardless of
+who clicks the button. Students never sign in to Google.
 
-### 1. Create a Google Cloud project
+### 1. Create the Drive folder
 
-1. Go to **https://console.cloud.google.com/**.
-2. Click the project dropdown at top-left → **NEW PROJECT**.
-3. Name it `EPIC Spectral Scanner` (or whatever you like). Create.
-
-### 2. Enable the Google Drive API
-
-1. In the left menu: **APIs & Services → Library**.
-2. Search for `Google Drive API`. Click it. Click **ENABLE**.
-
-### 3. Configure the OAuth consent screen
-
-1. **APIs & Services → OAuth consent screen**.
-2. User type: **External**. Create.
-3. App name: `EPIC Spectral Scanner`. User support email: yours.
-   Developer contact: yours. Save and continue through the rest with
-   defaults (you do not need to add scopes here — the app requests
-   `drive.file` at runtime).
-4. **Test users**: add the gmail addresses of every student account
-   that will use the app (or your camp's Google Workspace domain).
-   Without this, students will see an "unverified app" wall.
-
-### 4. Create the OAuth 2.0 Client ID
-
-1. **APIs & Services → Credentials → CREATE CREDENTIALS → OAuth client ID**.
-2. Application type: **Web application**.
-3. Name: `Spectral Scanner Web`.
-4. **Authorized JavaScript origins** — add your GitHub Pages URL
-   (root only, no path). Examples:
-   - `https://USERNAME.github.io`
-   - `https://your-camp-domain.org`
-   If you'll also test locally, add `http://localhost:8000`.
-5. **Authorized redirect URIs** — leave blank. (GIS uses the
-   implicit token flow.)
-6. Create. **Copy the Client ID** that appears.
-
-### 5. Create the API Key
-
-1. **APIs & Services → Credentials → CREATE CREDENTIALS → API key**.
-2. **Copy the key**.
-3. (Recommended) Click the new key → **Edit API key** →
-   **Application restrictions: HTTP referrers** → add your GitHub
-   Pages URL with `/*` (e.g. `https://USERNAME.github.io/*`).
-   **API restrictions: Restrict key → Google Drive API**.
-
-### 6. Create and share the Drive folder
-
-1. In Google Drive, create a folder, e.g. `EPIC Camo Submissions`.
-2. Open the folder. The URL looks like:
+1. In Google Drive, click **New → Folder**, e.g. `EPIC Camo Submissions`.
+2. Open it. The URL looks like:
    `https://drive.google.com/drive/folders/1aBcDeFgHiJkLmNoPqRsTuVwXyZ`
-   That long ID at the end is the **Drive folder ID**.
-3. Click **Share** on the folder.
-   - **Easy mode:** set "Anyone with the link" to **Editor**.
-     Students do not need to be added individually.
-   - **Locked mode:** add your students' Google accounts as Editors.
-4. Either way, students still authenticate as themselves — they
-   only get access to files **the app creates** (the `drive.file`
-   scope is narrow).
+3. Copy the long ID at the end (everything after `/folders/`).
 
-### 7. Paste the three values into the app
+### 2. Create the Apps Script
 
-Open `index.html` and find the `CONFIG` block near the top of the
-script section:
+1. Open **https://script.google.com/** in the same Google account that
+   owns the folder.
+2. Click **New project** (top-left).
+3. Rename the project from "Untitled project" to `SPECTRAL SCANNER`
+   (click the title at the top to rename).
+4. Delete the placeholder `function myFunction() { ... }` and paste in
+   the entire contents of [`apps-script/Code.gs`](apps-script/Code.gs).
+5. Find the line `const FOLDER_ID = 'PASTE_FOLDER_ID_HERE';` near the
+   top and replace `PASTE_FOLDER_ID_HERE` with the folder ID from step 1.
+6. Click the 💾 **Save** icon (or `Ctrl+S`).
+
+### 3. Deploy the script as a Web App
+
+1. Top-right, click **Deploy → New deployment**.
+2. Click the gear icon next to "Select type" → choose **Web app**.
+3. Fill in:
+   - **Description:** `SPECTRAL SCANNER receiver`
+   - **Execute as:** `Me (your-email)`  ← important — this is why
+     students don't need to sign in.
+   - **Who has access:** `Anyone`  ← the script verifies its own
+     folder; nobody can write anywhere else.
+4. Click **Deploy**.
+5. First time only: a permissions dialog appears. Click **Authorize
+   access** → pick your account → "Advanced" → "Go to SPECTRAL SCANNER
+   (unsafe)" → **Allow**. (Google calls it "unsafe" because the app
+   isn't published; it's your own code running in your own account.)
+6. You land on a "Deployment successfully updated" screen. **Copy the
+   Web app URL.** It looks like:
+   `https://script.google.com/macros/s/AKfycby.../exec`
+
+### 4. Paste the URL into the app
+
+Open `index.html`. Near the top of the `<script>` block:
 
 ```js
 const CONFIG = {
-  GOOGLE_CLIENT_ID:   'PASTE_YOUR_CLIENT_ID_HERE',
-  GOOGLE_API_KEY:     'PASTE_YOUR_API_KEY_HERE',
-  DRIVE_FOLDER_ID:    'PASTE_YOUR_SHARED_FOLDER_ID_HERE'
+  APPS_SCRIPT_URL: 'PASTE_YOUR_APPS_SCRIPT_URL_HERE'
 };
 ```
 
-Replace each string with the value from steps 4, 5, and 6. Commit and
+Replace the placeholder with the Web app URL from step 3.6. Commit and
 push. That's it.
 
-If any of the three are left as `PASTE_…` placeholders, the
-`TRANSMIT TO COMMAND` button stays disabled with `COMMAND CHANNEL
-OFFLINE. USE LOCAL DOWNLOAD.` — the rest of the app still works.
+### Updating the script later
+
+If you edit `Code.gs`, you must redeploy:
+1. **Deploy → Manage deployments** (NOT "New deployment" — that would
+   give you a different URL).
+2. Click the ✏️ pencil icon next to your existing deployment.
+3. **Version: New version**. Click **Deploy**.
+
+The Web app URL stays the same, so you don't need to touch `index.html`.
 
 ---
 
 ## DEPLOY TO GITHUB PAGES
 
-1. Push this folder to a GitHub repository.
-2. On the repo page: **Settings → Pages**.
-3. **Source: Deploy from a branch**.
-4. **Branch: main**, **Folder: / (root)**. Save.
-5. Wait ~30 seconds. Your site appears at
-   `https://USERNAME.github.io/REPO/`.
-6. **Important:** that URL (the origin, without the `/REPO/` path)
-   must be listed in **Authorized JavaScript origins** in step 4
-   above. If you used the project-page form, the origin is
-   `https://USERNAME.github.io`.
+(Already done — repo lives at https://github.com/wkur-z/spectral-scanner
+and the site is live at https://wkur-z.github.io/spectral-scanner/.)
 
-For a custom domain, point a `CNAME` at GitHub Pages and add that
-domain to Authorized JavaScript origins.
+For future updates: just push to `main` and Pages rebuilds in ~30 seconds.
 
 ---
 
 ## PRINTER SETTINGS — STICKER PAPER
 
-When you batch-print, every printer dialog needs the same answer:
+Every printer dialog needs the same answer:
 
 - **Paper size:** US Letter, 8.5 x 11 inches.
 - **Scaling:** **Actual size** (also called **100%** / **None**).
-  Do **not** use "Fit to page" — it will shrink the pattern and
-  leave white margins.
+  Do **not** use "Fit to page" — it will shrink the pattern and leave
+  white margins.
 - **Margins:** **None** (or "Minimum" if your printer can't go
   borderless). The PDF is already full-bleed.
 - **Orientation:** Portrait.
@@ -172,16 +142,12 @@ When you batch-print, every printer dialog needs the same answer:
 ### Batch print from the Drive folder
 
 1. Open the shared Drive folder on the instructor's computer.
-2. Sort by date so the newest student submissions are on top.
-3. Select all the PDFs you want to print (Cmd/Ctrl-click or
-   Shift-click).
-4. Right-click → **Open with → Adobe Acrobat / Preview / a desktop
-   PDF reader** (Drive's built-in viewer prints one at a time).
+2. Sort by date so the newest submissions are on top.
+3. Select all the PDFs you want to print (Cmd/Ctrl-click or Shift-click).
+4. Right-click → **Open with → Adobe Acrobat / Preview / a desktop PDF
+   reader** (Drive's built-in viewer prints one at a time).
 5. From the desktop reader: **File → Print → All open documents**
    (Acrobat), or print each one with the settings above.
-
-Tip: Acrobat's **Print → All open files in this window** is the
-fastest path for batches of 20+.
 
 ---
 
@@ -189,12 +155,13 @@ fastest path for batches of 20+.
 
 ```
 index.html              # the whole app
+apps-script/
+  Code.gs               # paste this into script.google.com
 generate_samples.py     # helper that rebuilds samples/*.png from the
-                        # same algorithms (Python + PIL); not needed
-                        # to deploy the app
+                        # same algorithms (Python + PIL); not used at runtime
 samples/
-  MARPAT-D.png          # example output for each pattern,
-  WOODLAND-7B.png       # generated with test palette
+  MARPAT-D.png          # example output for each pattern, generated
+  WOODLAND-7B.png       # with the test palette
   FRACTAL-G.png         # #4A7C2B, #8B6F47, #2D3E1F, #C4B896
   TERRAIN-X.png
 README.md               # this file
@@ -204,19 +171,21 @@ README.md               # this file
 
 ## TROUBLESHOOTING
 
-- **"unverified app" warning on Google sign-in:** the student's
-  account is not in the Test Users list (step 3.4). Add them, or
-  publish the OAuth consent screen.
-- **`origin_mismatch` error:** the URL the app is served from is not
-  in **Authorized JavaScript origins**. Check step 4 and re-save.
-- **403 from Drive on upload:** the student is signed in to a
-  different Google account than the one with folder access, OR the
-  folder isn't shared (step 6).
-- **`COMMAND CHANNEL OFFLINE`:** one of the three CONFIG values is
-  still `PASTE_…`, or the device is offline. Local download still
+- **`COMMAND CHANNEL OFFLINE`:** `APPS_SCRIPT_URL` in `index.html` is
+  still the placeholder, OR the device is offline. Local download still
   works.
+- **`TRANSMISSION FAILED // CODE [HTTP_401]` or `[HTTP_403]`:** the Apps
+  Script wasn't deployed with **Who has access: Anyone**. Redeploy.
+- **`TRANSMISSION FAILED // CODE [FOLDER_ID_UNCONFIGURED]`:** you forgot
+  to paste the folder ID into `Code.gs`. Edit, save, **Manage
+  deployments → New version**.
+- **`TRANSMISSION FAILED // CODE [Exception: ... not found]`:** the
+  folder ID is wrong, or the script's account doesn't have access to
+  that folder. Make sure the folder lives in the same Google account
+  the script is deployed under.
+- **Submissions are landing in the wrong folder:** you put a different
+  folder's ID in `Code.gs`. Fix it and redeploy a new version.
 - **PDF prints with white margin:** printer is using "Fit to page".
   Re-select **Actual size** / **100%**.
-- **Pattern looks the same after RECALIBRATE:** unlikely — each
-  click reseeds. If you're seeing identical output, refresh the
-  page; some Chromebook kiosk modes pin RNG state.
+- **Pattern looks the same after RECALIBRATE:** unlikely — each click
+  reseeds. If you see identical output, refresh the page.
