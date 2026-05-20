@@ -102,58 +102,67 @@ def luminance(rgb):
 
 
 # ====================================================================
-# EPIC CAMPUS EASTER EGG
-# Stamps a hidden EPIC mountain silhouette onto the rendered camo.
-# Matches the JS implementation in index.html so samples preview the
-# easter egg as students will see it.
+# EPIC CAMPUS LOGO STAMP
+# Drops the official EPIC Campus horizontal logo onto a white rounded
+# plate at a seed-derived position. Mirrors the JS implementation in
+# index.html so samples preview what students will actually see.
 # ====================================================================
 
-def _epic_silhouette_path(x, y, w, h):
-    """Returns vertices to draw as a polygon: half-circle 'sun' on top,
-    jagged W mountain teeth across the bottom."""
-    pts = []
-    # Approximate Bezier semicircle with line segments
-    import math
-    steps = 32
-    for k in range(steps + 1):
-        t = k / steps
-        # Cubic Bezier from (0, 0.5) via (0, 0.02) (1, 0.02) to (1, 0.5)
-        omt = 1 - t
-        px = (3 * omt * omt * t * 0.0
-              + 3 * omt * t * t * 1.0
-              + t * t * t * 1.0)
-        py = (omt * omt * omt * 0.5
-              + 3 * omt * omt * t * 0.02
-              + 3 * omt * t * t * 0.02
-              + t * t * t * 0.5)
-        pts.append((x + px * w, y + py * h))
-    # Jagged W bottom (right to left)
-    for (nx, ny) in [(0.88, 0.78), (0.72, 0.38), (0.55, 0.85),
-                     (0.40, 0.38), (0.22, 0.78), (0.10, 0.50)]:
-        pts.append((x + nx * w, y + ny * h))
-    return pts
+EPIC_LOGO_PATH = os.path.join(os.path.dirname(__file__), 'assets', 'epic-logo.png')
+
+
+def _rounded_rect_mask(w, h, radius):
+    """Build an L-mode mask shaped like a rounded rectangle."""
+    mask = Image.new('L', (w, h), 0)
+    d = ImageDraw.Draw(mask)
+    d.rounded_rectangle([0, 0, w - 1, h - 1], radius=radius, fill=255)
+    return mask
 
 
 def embed_epic_mark(img, w, h, palette_rgb, seed):
+    if not os.path.exists(EPIC_LOGO_PATH):
+        return img
     rnd = mulberry32((seed ^ 0xE91CCA) & 0xFFFFFFFF)
     px_per_inch = w / 8.5
-    mark_w = 2.0 * px_per_inch
-    mark_h = 1.1 * px_per_inch
+    logo = Image.open(EPIC_LOGO_PATH).convert('RGBA')
+    mark_w = int(3.0 * px_per_inch)
+    mark_h = int(mark_w * logo.size[1] / logo.size[0])
     cx = (0.25 + rnd() * 0.5) * w
     cy = (0.25 + rnd() * 0.5) * h
-    x = cx - mark_w / 2
-    y = cy - mark_h / 2
+    x = int(cx - mark_w / 2)
+    y = int(cy - mark_h / 2)
 
-    ordered = sorted(palette_rgb, key=luminance)
-    fill = ordered[0]
-    outline = ordered[3]
+    pad_x = int(mark_w * 0.06)
+    pad_y = int(mark_h * 0.20)
+    plate_x = x - pad_x
+    plate_y = y - pad_y
+    plate_w = mark_w + pad_x * 2
+    plate_h = mark_h + pad_y * 2
+    radius = int(min(plate_w, plate_h) * 0.18)
 
-    poly = _epic_silhouette_path(x, y, mark_w, mark_h)
-    draw = ImageDraw.Draw(img, 'RGBA')
-    draw.polygon(poly, fill=fill + (255,))
-    # Subtle 22%-opacity outline in lightest tone
-    draw.line(poly + [poly[0]], fill=outline + (56,),
-              width=max(1, int(px_per_inch * 0.018)))
+    # Soft drop shadow for the white plate
+    shadow_offset = max(1, int(px_per_inch * 0.02))
+    blur = max(1, int(px_per_inch * 0.04))
+    shadow = Image.new('RGBA', (plate_w + blur * 4, plate_h + blur * 4), (0, 0, 0, 0))
+    sdraw = ImageDraw.Draw(shadow)
+    sdraw.rounded_rectangle(
+        [blur * 2, blur * 2, blur * 2 + plate_w - 1, blur * 2 + plate_h - 1],
+        radius=radius, fill=(0, 0, 0, 90)
+    )
+    from PIL import ImageFilter
+    shadow = shadow.filter(ImageFilter.GaussianBlur(blur))
+    img.paste(shadow,
+              (plate_x - blur * 2 + shadow_offset, plate_y - blur * 2 + shadow_offset),
+              shadow)
+
+    # White rounded plate
+    plate = Image.new('RGBA', (plate_w, plate_h), (255, 255, 255, 255))
+    plate_mask = _rounded_rect_mask(plate_w, plate_h, radius)
+    img.paste(plate, (plate_x, plate_y), plate_mask)
+
+    # Logo on top, scaled
+    logo_scaled = logo.resize((mark_w, mark_h), Image.LANCZOS)
+    img.paste(logo_scaled, (x, y), logo_scaled)
     return img
 
 
