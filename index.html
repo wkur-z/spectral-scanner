@@ -1,0 +1,1427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPECTRAL SCANNER // CAMO GENERATION TERMINAL</title>
+
+<!--
+====================================================================
+SPECTRAL SCANNER // CAMO GENERATION TERMINAL
+EPIC Aerospace Recon Division — Middle School Summer Camp
+====================================================================
+
+DESIGN DECISIONS
+----------------
+- Single-file vanilla JS. No build. CDN-only deps: jsPDF, GIS, GAPI, Google Fonts.
+- Seeded RNG is mulberry32. Perlin noise is a classic Ken Perlin implementation
+  inlined below. No external math libs.
+- FRACTAL-G uses jittered-grid triangulation (two triangles per quad with
+  shared jittered corners) instead of full Delaunay. Visually equivalent
+  "geometric shatter" without pulling a triangulation library.
+- Pattern thumbnails on the selector cards render at 120x155 px with a stub
+  green palette on load, then re-render with the student's palette once all
+  four hex codes validate.
+- Preview canvas is 1275x1650 (half print resolution). Print PDF is regenerated
+  at 2550x3300 (300 DPI on 8.5x11) at submit/download time, so the preview
+  stays fast on Chromebooks but the output is full-resolution.
+- Auth token is cached in sessionStorage so a student can submit multiple
+  versions without re-prompting. Token expiry triggers re-auth on demand.
+- If CONFIG values are placeholders or the page is offline, TRANSMIT is
+  hidden/disabled and LOCAL DOWNLOAD remains the path.
+- Boot sequence is ~1.6s. Interface is hidden behind it but tab order and
+  focus work normally once revealed.
+====================================================================
+-->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   CRT TERMINAL THEME
+   ============================================================ */
+
+:root {
+  --bg: #000000;
+  --bg-glow: #001500;
+  --green: #00FF41;
+  --green-dim: #00AA2B;
+  --green-bright: #39FF14;
+  --amber: #FF6B1A;
+  --border: rgba(0, 255, 65, 0.6);
+  --border-dim: rgba(0, 255, 65, 0.25);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--green);
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+body {
+  background:
+    radial-gradient(ellipse at center, var(--bg-glow) 0%, var(--bg) 70%);
+  text-shadow: 0 0 5px currentColor;
+  position: relative;
+  padding: 20px 16px 60px;
+}
+
+/* CRT scanlines overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.18) 2px,
+    rgba(0, 0, 0, 0.18) 3px
+  );
+  pointer-events: none;
+  z-index: 9000;
+}
+
+/* Subtle vignette */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.55) 100%);
+  pointer-events: none;
+  z-index: 8999;
+}
+
+/* Phosphor flicker on key headers */
+@keyframes flicker {
+  0%, 92%, 100% { opacity: 1; }
+  93% { opacity: 0.7; }
+  94% { opacity: 1; }
+  95% { opacity: 0.85; }
+  96% { opacity: 1; }
+}
+
+.flicker { animation: flicker 5s infinite; }
+
+/* Blinking cursor */
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+.cursor::after {
+  content: '_';
+  margin-left: 4px;
+  animation: blink 1s infinite step-end;
+  color: var(--green-bright);
+}
+
+/* REC indicator */
+.rec {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 9100;
+  font-family: 'VT323', monospace;
+  font-size: 18px;
+  letter-spacing: 2px;
+  color: var(--amber);
+  text-shadow: 0 0 6px currentColor;
+}
+.rec .dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 8px var(--amber);
+  margin-right: 6px;
+  vertical-align: middle;
+  animation: blink 1.2s infinite step-end;
+}
+
+/* ============================================================
+   BOOT SEQUENCE
+   ============================================================ */
+
+#boot {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  color: var(--green);
+  font-family: 'VT323', monospace;
+  font-size: 20px;
+  padding: 60px 24px;
+  z-index: 9500;
+  white-space: pre-wrap;
+  text-shadow: 0 0 5px currentColor;
+}
+#boot.done {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease-out;
+}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+
+.terminal-header {
+  font-family: 'VT323', monospace;
+  font-size: 18px;
+  line-height: 1.15;
+  white-space: pre;
+  color: var(--green);
+  text-align: center;
+  margin: 0 auto 8px;
+  max-width: 900px;
+  overflow-x: auto;
+}
+
+.statusbar {
+  max-width: 900px;
+  margin: 0 auto 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 13px;
+  color: var(--green-dim);
+  border-top: 1px dashed var(--border-dim);
+  border-bottom: 1px dashed var(--border-dim);
+  padding: 4px 8px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.statusbar .pill {
+  color: var(--green-bright);
+  letter-spacing: 1px;
+}
+
+/* ============================================================
+   LAYOUT
+   ============================================================ */
+
+main {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.section {
+  border: 1px solid var(--border);
+  padding: 16px 18px 20px;
+  margin: 0 0 22px;
+  position: relative;
+  background: rgba(0, 25, 0, 0.15);
+}
+
+.section-label {
+  font-family: 'VT323', monospace;
+  font-size: 22px;
+  letter-spacing: 2px;
+  color: var(--green-bright);
+  margin: -28px 0 14px;
+  background: var(--bg);
+  display: inline-block;
+  padding: 0 10px;
+  text-transform: uppercase;
+}
+
+.divider {
+  font-family: 'VT323', monospace;
+  color: var(--border);
+  letter-spacing: 0;
+  margin: 14px 0;
+  overflow: hidden;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* ============================================================
+   FORM ELEMENTS
+   ============================================================ */
+
+label {
+  display: block;
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  color: var(--green-dim);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+input[type="text"] {
+  background: rgba(0, 0, 0, 0.6);
+  color: var(--green-bright);
+  border: 1px solid var(--border);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 16px;
+  padding: 8px 10px;
+  width: 100%;
+  outline: none;
+  text-shadow: 0 0 4px currentColor;
+  letter-spacing: 1px;
+}
+
+input[type="text"]:focus {
+  border-color: var(--green-bright);
+  box-shadow: 0 0 8px rgba(57, 255, 20, 0.5);
+}
+
+input.invalid {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.field-error {
+  font-size: 12px;
+  color: var(--amber);
+  letter-spacing: 1px;
+  margin-top: 4px;
+  min-height: 16px;
+  text-shadow: 0 0 4px currentColor;
+}
+
+/* Callsign row */
+.callsign-row {
+  margin-bottom: 18px;
+}
+
+/* Hex inputs grid */
+.hex-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
+}
+
+.hex-cell {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.hex-cell .swatch {
+  width: 44px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: #000;
+  align-self: stretch;
+  min-height: 40px;
+}
+
+.hex-cell .hex-input-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ============================================================
+   PATTERN CARDS
+   ============================================================ */
+
+.pattern-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.pattern-card {
+  border: 1px solid var(--border);
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  user-select: none;
+}
+.pattern-card:hover {
+  border-color: var(--green-bright);
+  box-shadow: 0 0 8px rgba(0, 255, 65, 0.35);
+}
+.pattern-card.selected {
+  border-color: var(--green-bright);
+  background: rgba(0, 80, 20, 0.35);
+  box-shadow: 0 0 12px rgba(57, 255, 20, 0.5);
+}
+
+.pattern-card canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 8.5 / 11;
+  background: #000;
+  border: 1px solid var(--border-dim);
+  image-rendering: pixelated;
+}
+
+.pattern-card .pattern-name {
+  font-family: 'VT323', monospace;
+  font-size: 16px;
+  letter-spacing: 1px;
+  color: var(--green);
+  margin-top: 8px;
+  line-height: 1.2;
+}
+
+/* ============================================================
+   PREVIEW
+   ============================================================ */
+
+.preview-frame {
+  position: relative;
+  margin: 4px auto 0;
+  max-width: 480px;
+  padding: 22px;
+}
+
+.preview-frame::before,
+.preview-frame::after,
+.preview-frame > .br-bl,
+.preview-frame > .br-br {
+  position: absolute;
+  font-family: 'VT323', monospace;
+  color: var(--green-bright);
+  font-size: 28px;
+  text-shadow: 0 0 6px currentColor;
+}
+.preview-frame::before { content: '⌐'; top: -2px; left: 0; }
+.preview-frame::after  { content: '¬'; top: -2px; right: 0; }
+.preview-frame .br-bl  { content: '⌙'; bottom: -2px; left: 0; }
+.preview-frame .br-br  { content: '⌎'; bottom: -2px; right: 0; }
+
+.preview-frame canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 8.5 / 11;
+  background: #000;
+  border: 1px solid var(--border);
+  image-rendering: pixelated;
+}
+
+.preview-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 8.5 / 11;
+  border: 1px dashed var(--border-dim);
+  color: var(--green-dim);
+  font-family: 'VT323', monospace;
+  font-size: 18px;
+  letter-spacing: 2px;
+  text-align: center;
+  padding: 20px;
+}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+button.term {
+  font-family: 'VT323', monospace;
+  font-size: 20px;
+  letter-spacing: 2px;
+  color: var(--green-bright);
+  background: transparent;
+  border: 2px solid var(--green-bright);
+  padding: 10px 18px;
+  cursor: pointer;
+  text-transform: uppercase;
+  text-shadow: 0 0 6px currentColor;
+  transition: background 0.12s, color 0.12s;
+}
+button.term:hover:not(:disabled) {
+  background: var(--green-bright);
+  color: #000;
+  text-shadow: none;
+}
+button.term:disabled {
+  color: var(--green-dim);
+  border-color: var(--green-dim);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button.term.amber {
+  color: var(--amber);
+  border-color: var(--amber);
+}
+button.term.amber:hover:not(:disabled) {
+  background: var(--amber);
+  color: #000;
+}
+
+/* ============================================================
+   STATUS LINE
+   ============================================================ */
+
+.status-line {
+  font-family: 'VT323', monospace;
+  font-size: 18px;
+  letter-spacing: 1.5px;
+  color: var(--green-bright);
+  margin-top: 12px;
+  min-height: 24px;
+  word-break: break-all;
+}
+.status-line.amber { color: var(--amber); }
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
+@media (max-width: 600px) {
+  body { padding: 14px 10px 50px; }
+  .terminal-header { font-size: 13px; }
+  .hex-grid { grid-template-columns: 1fr; }
+  .section { padding: 14px 12px 16px; }
+  .section-label { font-size: 18px; }
+  .rec { font-size: 14px; top: 6px; right: 8px; }
+}
+</style>
+</head>
+
+<body>
+
+<div class="rec"><span class="dot"></span>REC</div>
+
+<div id="boot" aria-hidden="true"></div>
+
+<header>
+<pre class="terminal-header flicker">╔══════════════════════════════════════════════════════════╗
+║  SPECTRAL SCANNER // CAMO GENERATION TERMINAL            ║
+║  CLASSIFICATION: UNCLASSIFIED // STUDENT USE             ║
+║  STATION: EPIC AEROSPACE RECON DIVISION                  ║
+╚══════════════════════════════════════════════════════════╝</pre>
+<div class="statusbar">
+  <span>SYS_TIME :: <span id="clock" class="pill">--:--:--</span></span>
+  <span>STATUS :: <span id="opstatus" class="pill">OPERATIONAL</span></span>
+  <span>LINK :: <span id="linkstatus" class="pill">CHECKING…</span></span>
+</div>
+</header>
+
+<main id="ui" style="opacity:0; transition: opacity 0.45s ease-in;">
+
+<!-- STEP 01 -->
+<section class="section">
+  <div class="section-label cursor">[ STEP 01 ] :: INPUT SPECTRAL DATA</div>
+
+  <div class="callsign-row">
+    <label for="callsign">OPERATIVE CALLSIGN:</label>
+    <input type="text" id="callsign" maxlength="24" autocomplete="off" spellcheck="false" placeholder="ENTER NAME / CODENAME">
+    <div class="field-error" id="callsign-error"></div>
+  </div>
+
+  <div class="divider">▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓</div>
+
+  <label>SPECTRAL READINGS — 4 HEX CODES FROM RGB SENSOR:</label>
+  <div class="hex-grid" id="hex-grid">
+    <!-- Built by JS -->
+  </div>
+</section>
+
+<!-- STEP 02 -->
+<section class="section">
+  <div class="section-label cursor">[ STEP 02 ] :: SELECT CAMO ALGORITHM</div>
+  <div class="pattern-grid" id="pattern-grid">
+    <!-- Built by JS -->
+  </div>
+</section>
+
+<!-- STEP 03 -->
+<section class="section">
+  <div class="section-label cursor">[ STEP 03 ] :: PATTERN PREVIEW // VISUAL FEED</div>
+  <div class="preview-frame">
+    <span class="br-bl">⌙</span>
+    <span class="br-br">⌎</span>
+    <div id="preview-container">
+      <div class="preview-empty">// AWAITING SPECTRAL DATA<br>// EXECUTE TO RENDER FEED</div>
+    </div>
+  </div>
+  <div class="button-row" style="justify-content: center; margin-top: 16px;">
+    <button class="term" id="btn-execute" disabled>EXECUTE &gt;&gt; GENERATE PATTERN</button>
+    <button class="term amber" id="btn-recalibrate" disabled>RECALIBRATE &gt;&gt; NEW SEED</button>
+  </div>
+</section>
+
+<!-- STEP 04 -->
+<section class="section">
+  <div class="section-label cursor">[ STEP 04 ] :: TRANSMIT TO COMMAND</div>
+  <div class="button-row">
+    <button class="term" id="btn-download" disabled>DOWNLOAD LOCAL COPY</button>
+    <button class="term" id="btn-transmit" disabled>▲ TRANSMIT TO COMMAND ▲</button>
+  </div>
+  <div class="status-line" id="transmit-status"></div>
+</section>
+
+<div class="divider" style="text-align:center; color: var(--border-dim);">════════════════ END OF TRANSMISSION ════════════════</div>
+
+</main>
+
+<!-- jsPDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- Google Identity Services -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<!-- Google API Client -->
+<script src="https://apis.google.com/js/api.js" async defer></script>
+
+<script>
+/* ====================================================================
+   CONFIG — INSTRUCTOR EDITS THESE THREE VALUES
+   ==================================================================== */
+
+const CONFIG = {
+  GOOGLE_CLIENT_ID:   'PASTE_YOUR_CLIENT_ID_HERE',
+  GOOGLE_API_KEY:     'PASTE_YOUR_API_KEY_HERE',
+  DRIVE_FOLDER_ID:    'PASTE_YOUR_SHARED_FOLDER_ID_HERE'
+};
+
+/* ====================================================================
+   PATTERN REGISTRY
+   ==================================================================== */
+
+const PATTERNS = [
+  { id: 'MARPAT-D',    label: 'MARPAT-D :: DIGITAL TESSELLATION',  render: renderMarpat   },
+  { id: 'WOODLAND-7B', label: 'WOODLAND-7B :: ORGANIC BLOB',       render: renderWoodland },
+  { id: 'FRACTAL-G',   label: 'FRACTAL-G :: GEOMETRIC SHATTER',    render: renderFractalG },
+  { id: 'TERRAIN-X',   label: 'TERRAIN-X :: TOPOGRAPHIC FIELD',    render: renderTerrainX }
+];
+
+const STUB_PALETTE = ['#003311', '#006622', '#00AA2B', '#00FF41'];
+
+const state = {
+  callsign: '',
+  hex: ['', '', '', ''],
+  colors: [null, null, null, null], // expanded 6-char hex with '#' or null
+  pattern: 'MARPAT-D',
+  seed: (Math.random() * 1e9) | 0,
+  rendered: false,
+  tokenClient: null,
+  accessToken: null,
+  gapiReady: false,
+  gisReady: false
+};
+
+/* ====================================================================
+   SEEDED RNG — mulberry32
+   ==================================================================== */
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function() {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ====================================================================
+   CLASSIC PERLIN NOISE (seeded permutation)
+   ==================================================================== */
+
+function makePerlin(seed) {
+  const rnd = mulberry32(seed);
+  const p = new Uint8Array(512);
+  const perm = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) perm[i] = i;
+  for (let i = 255; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [perm[i], perm[j]] = [perm[j], perm[i]];
+  }
+  for (let i = 0; i < 512; i++) p[i] = perm[i & 255];
+
+  function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+  function lerp(a, b, t) { return a + t * (b - a); }
+  function grad(hash, x, y) {
+    const h = hash & 7;
+    const u = h < 4 ? x : y;
+    const v = h < 4 ? y : x;
+    return ((h & 1) ? -u : u) + ((h & 2) ? -2 * v : 2 * v);
+  }
+
+  return function(x, y) {
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+    x -= Math.floor(x);
+    y -= Math.floor(y);
+    const u = fade(x), v = fade(y);
+    const A = p[X] + Y, B = p[X + 1] + Y;
+    const n = lerp(
+      lerp(grad(p[A],     x,     y    ), grad(p[B],     x - 1, y    ), u),
+      lerp(grad(p[A + 1], x,     y - 1), grad(p[B + 1], x - 1, y - 1), u),
+      v
+    );
+    // Output in range ~[-1, 1] → normalize to [0, 1]
+    return (n + 1) * 0.5;
+  };
+}
+
+function fbm(noise, x, y, octaves, lacunarity, gain) {
+  let sum = 0;
+  let amp = 1;
+  let freq = 1;
+  let norm = 0;
+  for (let i = 0; i < octaves; i++) {
+    sum += amp * noise(x * freq, y * freq);
+    norm += amp;
+    amp *= gain;
+    freq *= lacunarity;
+  }
+  return sum / norm;
+}
+
+/* ====================================================================
+   HEX UTILITIES
+   ==================================================================== */
+
+function normalizeHex(raw) {
+  if (!raw) return null;
+  let s = String(raw).trim().toUpperCase();
+  if (s.startsWith('#')) s = s.slice(1);
+  if (/^[0-9A-F]{3}$/.test(s)) {
+    s = s.split('').map(c => c + c).join('');
+  }
+  if (/^[0-9A-F]{6}$/.test(s)) return '#' + s;
+  return null;
+}
+
+function sanitizeCallsign(name) {
+  return (name || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 24) || 'CADET';
+}
+
+function ts() {
+  const d = new Date();
+  const z = n => String(n).padStart(2, '0');
+  return d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) +
+         '-' + z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds());
+}
+
+/* ====================================================================
+   PATTERN RENDERERS
+   Each takes (ctx, w, h, colors, seed)
+   colors: array of 4 hex strings like '#RRGGBB'
+   ==================================================================== */
+
+// ---- MARPAT-D :: Digital Tessellation ----------------------------
+function renderMarpat(ctx, w, h, colors, seed) {
+  const cellsX = 80;
+  const cellsY = 100;
+  const cellW = w / cellsX;
+  const cellH = h / cellsY;
+  const noise = makePerlin(seed);
+  const noise2 = makePerlin(seed ^ 0xA5A5A5);
+  // Frequency tuned so average cluster is ~5-15 cells across.
+  const freq = 0.09; // 1/freq ≈ 11 cells
+
+  ctx.imageSmoothingEnabled = false;
+
+  for (let j = 0; j < cellsY; j++) {
+    for (let i = 0; i < cellsX; i++) {
+      // Two octaves of noise → pick one of 4 colors
+      const n1 = noise(i * freq, j * freq);
+      const n2 = noise2(i * freq * 1.8 + 100, j * freq * 1.8 + 100);
+      const v = (n1 * 0.65 + n2 * 0.35); // [0,1]
+      let idx;
+      if      (v < 0.25) idx = 0;
+      else if (v < 0.50) idx = 1;
+      else if (v < 0.75) idx = 2;
+      else               idx = 3;
+      ctx.fillStyle = colors[idx];
+      // Add 1 to dimensions to avoid hairline gaps from FP rounding
+      ctx.fillRect(Math.floor(i * cellW), Math.floor(j * cellH),
+                   Math.ceil(cellW) + 1, Math.ceil(cellH) + 1);
+    }
+  }
+}
+
+// ---- WOODLAND-7B :: Organic Blob --------------------------------
+function renderWoodland(ctx, w, h, colors, seed) {
+  // Sort colors darkest -> lightest by luminance so darker blobs go down first
+  const ordered = sortByLuminance(colors);
+  // Background = darkest
+  ctx.fillStyle = ordered[0];
+  ctx.fillRect(0, 0, w, h);
+
+  const rnd = mulberry32(seed);
+  // 80-150 blobs
+  const total = Math.floor(80 + rnd() * 71);
+  const pxPerInch = w / 8.5;
+
+  // Place blobs in passes from darker to lighter (skip index 0, already bg)
+  // Distribute the total across remaining 3 color tiers roughly evenly.
+  const buckets = [Math.floor(total / 3), Math.floor(total / 3), total - 2 * Math.floor(total / 3)];
+
+  for (let tier = 1; tier < 4; tier++) {
+    const color = ordered[tier];
+    const count = buckets[tier - 1];
+    for (let k = 0; k < count; k++) {
+      const cx = rnd() * w;
+      const cy = rnd() * h;
+      // Blob "radius" between 0.5 and 1.5 inches (so diameter 1-3 inches)
+      const r = (0.5 + rnd() * 1.0) * pxPerInch;
+      drawBlob(ctx, cx, cy, r, color, rnd);
+    }
+  }
+}
+
+function drawBlob(ctx, cx, cy, r, color, rnd) {
+  // Build an irregular polygon by sampling N angles with noisy radius.
+  const points = 14 + Math.floor(rnd() * 8); // 14-21 control points
+  const angStep = (Math.PI * 2) / points;
+  // Random per-blob phase for variety
+  const phase = rnd() * Math.PI * 2;
+  const verts = [];
+  for (let i = 0; i < points; i++) {
+    const a = i * angStep + phase;
+    // Radius jitter: 0.55r to 1.25r
+    const rr = r * (0.55 + rnd() * 0.7);
+    verts.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]);
+  }
+  // Smooth using quadratic curves through midpoints
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  const last = verts[verts.length - 1];
+  const first = verts[0];
+  let prev = [(last[0] + first[0]) / 2, (last[1] + first[1]) / 2];
+  ctx.moveTo(prev[0], prev[1]);
+  for (let i = 0; i < verts.length; i++) {
+    const cur = verts[i];
+    const next = verts[(i + 1) % verts.length];
+    const mid = [(cur[0] + next[0]) / 2, (cur[1] + next[1]) / 2];
+    ctx.quadraticCurveTo(cur[0], cur[1], mid[0], mid[1]);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+// ---- FRACTAL-G :: Geometric Shatter ------------------------------
+function renderFractalG(ctx, w, h, colors, seed) {
+  const rnd = mulberry32(seed);
+  const pxPerInch = w / 8.5;
+  // Average triangle edge 0.5-1.5 inches → grid spacing ~1.0 inch
+  const cellSize = 1.0 * pxPerInch;
+  const cols = Math.ceil(w / cellSize) + 1;
+  const rows = Math.ceil(h / cellSize) + 1;
+
+  // Build jittered grid points
+  const pts = [];
+  for (let j = 0; j <= rows; j++) {
+    pts.push([]);
+    for (let i = 0; i <= cols; i++) {
+      // Jitter each interior point by up to 0.45 cellSize
+      const isEdge = (i === 0 || j === 0 || i === cols || j === rows);
+      const jx = isEdge ? 0 : (rnd() - 0.5) * cellSize * 0.9;
+      const jy = isEdge ? 0 : (rnd() - 0.5) * cellSize * 0.9;
+      pts[j].push([i * cellSize + jx, j * cellSize + jy]);
+    }
+  }
+
+  // Fill background with first color to avoid any hairline gaps
+  ctx.fillStyle = colors[0];
+  ctx.fillRect(0, 0, w, h);
+
+  // For each quad, draw two triangles. Choose colors biased to differ from neighbors.
+  // Use Perlin to give a regional flavor (so it doesn't look like white noise),
+  // then nudge so adjacent triangles tend to differ.
+  const noise = makePerlin(seed ^ 0x12345);
+  const colorJitter = mulberry32(seed ^ 0x9988);
+
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      const a = pts[j][i];
+      const b = pts[j][i + 1];
+      const c = pts[j + 1][i];
+      const d = pts[j + 1][i + 1];
+
+      // Diagonal direction alternates pseudo-randomly per quad
+      const altDiag = (((i * 73856093) ^ (j * 19349663) ^ seed) & 1) === 0;
+
+      const region = noise(i * 0.18, j * 0.18); // [0,1]
+      const baseIdx = Math.min(3, Math.floor(region * 4));
+
+      const tri1Idx = pickDifferent(baseIdx, colorJitter(), -1);
+      const tri2Idx = pickDifferent(baseIdx, colorJitter(), tri1Idx);
+
+      ctx.fillStyle = colors[tri1Idx];
+      ctx.beginPath();
+      if (altDiag) {
+        // a-b-c and b-d-c
+        ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(c[0], c[1]); ctx.closePath();
+      } else {
+        // a-b-d and a-d-c
+        ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(d[0], d[1]); ctx.closePath();
+      }
+      ctx.fill();
+
+      ctx.fillStyle = colors[tri2Idx];
+      ctx.beginPath();
+      if (altDiag) {
+        ctx.moveTo(b[0], b[1]); ctx.lineTo(d[0], d[1]); ctx.lineTo(c[0], c[1]); ctx.closePath();
+      } else {
+        ctx.moveTo(a[0], a[1]); ctx.lineTo(d[0], d[1]); ctx.lineTo(c[0], c[1]); ctx.closePath();
+      }
+      ctx.fill();
+    }
+  }
+}
+
+function pickDifferent(base, r, avoidIdx) {
+  // 60% chance use base, 40% use a different neighbor color
+  let idx;
+  if (r < 0.6) idx = base;
+  else idx = (base + 1 + Math.floor(r * 3)) % 4;
+  if (idx === avoidIdx) idx = (idx + 1) % 4;
+  return idx;
+}
+
+// ---- TERRAIN-X :: Topographic Field ------------------------------
+function renderTerrainX(ctx, w, h, colors, seed) {
+  // Render at downsampled resolution then upscale with smoothing for soft bands.
+  // Use ImageData for speed.
+  const scale = Math.max(1, Math.floor(w / 600)); // ~600 wide work canvas
+  const ww = Math.ceil(w / scale);
+  const hh = Math.ceil(h / scale);
+  const noise = makePerlin(seed);
+  const img = ctx.createImageData(ww, hh);
+  const data = img.data;
+
+  // Frequency: a few large bands across the sheet
+  const freq = 3 / ww; // ~3 cycles across width
+  const rgbs = colors.map(hexToRgb);
+
+  for (let j = 0; j < hh; j++) {
+    for (let i = 0; i < ww; i++) {
+      const v = fbm((x, y) => noise(x, y), i * freq, j * freq, 4, 2.0, 0.55);
+      let idx;
+      if      (v < 0.25) idx = 0;
+      else if (v < 0.50) idx = 1;
+      else if (v < 0.75) idx = 2;
+      else               idx = 3;
+      const c = rgbs[idx];
+      const o = (j * ww + i) * 4;
+      data[o]     = c[0];
+      data[o + 1] = c[1];
+      data[o + 2] = c[2];
+      data[o + 3] = 255;
+    }
+  }
+
+  // Paint at small res through an offscreen canvas, then drawImage scaled up
+  const off = document.createElement('canvas');
+  off.width = ww; off.height = hh;
+  off.getContext('2d').putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false; // hard band edges
+  ctx.drawImage(off, 0, 0, w, h);
+}
+
+/* ====================================================================
+   COLOR HELPERS
+   ==================================================================== */
+
+function hexToRgb(hex) {
+  const s = hex.replace('#', '');
+  return [
+    parseInt(s.slice(0, 2), 16),
+    parseInt(s.slice(2, 4), 16),
+    parseInt(s.slice(4, 6), 16)
+  ];
+}
+
+function luminance(hex) {
+  const [r, g, b] = hexToRgb(hex);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function sortByLuminance(colors) {
+  return [...colors].sort((a, b) => luminance(a) - luminance(b));
+}
+
+/* ====================================================================
+   BUILD UI
+   ==================================================================== */
+
+function buildHexInputs() {
+  const grid = document.getElementById('hex-grid');
+  grid.innerHTML = '';
+  for (let i = 0; i < 4; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'hex-cell';
+    cell.innerHTML = `
+      <div class="swatch" id="swatch-${i}" aria-hidden="true"></div>
+      <div class="hex-input-wrap">
+        <label for="hex-${i}">CH-${i + 1} ::</label>
+        <input type="text" id="hex-${i}" maxlength="9" autocomplete="off" spellcheck="false" placeholder="#______">
+        <div class="field-error" id="hex-${i}-error"></div>
+      </div>
+    `;
+    grid.appendChild(cell);
+  }
+  for (let i = 0; i < 4; i++) {
+    const inp = document.getElementById(`hex-${i}`);
+    inp.addEventListener('input', () => onHexInput(i));
+  }
+}
+
+function buildPatternCards() {
+  const grid = document.getElementById('pattern-grid');
+  grid.innerHTML = '';
+  PATTERNS.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'pattern-card' + (p.id === state.pattern ? ' selected' : '');
+    card.dataset.pattern = p.id;
+    card.innerHTML = `
+      <canvas data-thumb="${p.id}" width="120" height="155"></canvas>
+      <div class="pattern-name">${p.label}</div>
+    `;
+    card.addEventListener('click', () => {
+      state.pattern = p.id;
+      document.querySelectorAll('.pattern-card').forEach(c =>
+        c.classList.toggle('selected', c.dataset.pattern === p.id));
+      updateButtonStates();
+    });
+    grid.appendChild(card);
+  });
+}
+
+function renderThumbnails() {
+  const palette = allColorsValid() ? state.colors : STUB_PALETTE;
+  PATTERNS.forEach(p => {
+    const cv = document.querySelector(`canvas[data-thumb="${p.id}"]`);
+    if (!cv) return;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    p.render(ctx, cv.width, cv.height, palette, state.seed ^ p.id.charCodeAt(0));
+  });
+}
+
+/* ====================================================================
+   VALIDATION
+   ==================================================================== */
+
+function onHexInput(i) {
+  const inp = document.getElementById(`hex-${i}`);
+  const err = document.getElementById(`hex-${i}-error`);
+  const sw  = document.getElementById(`swatch-${i}`);
+  const norm = normalizeHex(inp.value);
+  state.hex[i] = inp.value;
+  if (norm) {
+    state.colors[i] = norm;
+    inp.classList.remove('invalid');
+    err.textContent = '';
+    sw.style.background = norm;
+    sw.style.boxShadow = `0 0 6px ${norm}`;
+  } else {
+    state.colors[i] = null;
+    inp.classList.add(inp.value.trim() ? 'invalid' : '');
+    if (inp.value.trim()) inp.classList.add('invalid');
+    err.textContent = inp.value.trim() ? 'INVALID HEX // RETRY' : '';
+    sw.style.background = '#000';
+    sw.style.boxShadow = 'none';
+  }
+  renderThumbnails();
+  updateButtonStates();
+}
+
+function allColorsValid() {
+  return state.colors.every(c => c !== null);
+}
+
+function callsignValid() {
+  return state.callsign.trim().length > 0;
+}
+
+function updateButtonStates() {
+  const ready = callsignValid() && allColorsValid();
+  document.getElementById('btn-execute').disabled = !ready;
+  document.getElementById('btn-recalibrate').disabled = !state.rendered;
+  document.getElementById('btn-download').disabled = !state.rendered;
+  // Transmit button depends on render + config + auth-ready
+  document.getElementById('btn-transmit').disabled = !state.rendered || !channelOnline();
+}
+
+/* ====================================================================
+   PREVIEW + PRINT RENDER
+   ==================================================================== */
+
+const PREVIEW_W = 1275, PREVIEW_H = 1650;   // half of print
+const PRINT_W   = 2550, PRINT_H   = 3300;   // 300 DPI on 8.5x11
+
+let previewCanvas = null;
+
+function renderPreview() {
+  const container = document.getElementById('preview-container');
+  container.innerHTML = '';
+  const cv = document.createElement('canvas');
+  cv.width = PREVIEW_W;
+  cv.height = PREVIEW_H;
+  container.appendChild(cv);
+  previewCanvas = cv;
+  const ctx = cv.getContext('2d');
+  const p = PATTERNS.find(x => x.id === state.pattern);
+  p.render(ctx, PREVIEW_W, PREVIEW_H, state.colors, state.seed);
+  state.rendered = true;
+  updateButtonStates();
+}
+
+function renderPrintCanvas() {
+  // Full-resolution canvas built fresh at submit/download time.
+  const cv = document.createElement('canvas');
+  cv.width = PRINT_W;
+  cv.height = PRINT_H;
+  const ctx = cv.getContext('2d');
+  const p = PATTERNS.find(x => x.id === state.pattern);
+  p.render(ctx, PRINT_W, PRINT_H, state.colors, state.seed);
+  return cv;
+}
+
+/* ====================================================================
+   PDF GENERATION (jsPDF)
+   ==================================================================== */
+
+function buildPdfBlob() {
+  const cv = renderPrintCanvas();
+  const dataUrl = cv.toDataURL('image/png');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'in', format: 'letter' });
+  doc.addImage(dataUrl, 'PNG', 0, 0, 8.5, 11, undefined, 'FAST');
+  return doc.output('blob');
+}
+
+function filenameFor() {
+  const cs = sanitizeCallsign(state.callsign);
+  return `CAMO_${cs}_${state.pattern}_${ts()}.pdf`;
+}
+
+function downloadLocal() {
+  setStatus('// COMPILING LOCAL COPY…', false);
+  // Defer so the browser paints the status line before the heavy render.
+  setTimeout(() => {
+    try {
+      const blob = buildPdfBlob();
+      const url = URL.createObjectURL(blob);
+      const fn = filenameFor();
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fn;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setStatus(`// LOCAL COPY SAVED :: ${fn}`, false);
+    } catch (e) {
+      console.error(e);
+      setStatus(`// LOCAL EXPORT FAILED // CODE ${e.message || 'UNKNOWN'}`, true);
+    }
+  }, 30);
+}
+
+/* ====================================================================
+   GOOGLE DRIVE UPLOAD
+   ==================================================================== */
+
+function configFilled() {
+  return CONFIG.GOOGLE_CLIENT_ID && !CONFIG.GOOGLE_CLIENT_ID.startsWith('PASTE_')
+      && CONFIG.GOOGLE_API_KEY   && !CONFIG.GOOGLE_API_KEY.startsWith('PASTE_')
+      && CONFIG.DRIVE_FOLDER_ID  && !CONFIG.DRIVE_FOLDER_ID.startsWith('PASTE_');
+}
+
+function channelOnline() {
+  return configFilled() && navigator.onLine && state.gapiReady && state.gisReady;
+}
+
+function updateLinkStatus() {
+  const el = document.getElementById('linkstatus');
+  if (!navigator.onLine) {
+    el.textContent = 'LOCAL ONLY';
+    el.style.color = 'var(--amber)';
+  } else if (!configFilled()) {
+    el.textContent = 'OFFLINE — CMD CHANNEL UNCONFIGURED';
+    el.style.color = 'var(--amber)';
+    document.getElementById('btn-transmit').title =
+      'COMMAND CHANNEL OFFLINE. USE LOCAL DOWNLOAD.';
+  } else if (state.gapiReady && state.gisReady) {
+    el.textContent = 'CMD CHANNEL READY';
+    el.style.color = 'var(--green-bright)';
+  } else {
+    el.textContent = 'CONNECTING…';
+    el.style.color = 'var(--green-dim)';
+  }
+  updateButtonStates();
+}
+
+window.addEventListener('online',  updateLinkStatus);
+window.addEventListener('offline', updateLinkStatus);
+
+function initGAPI() {
+  if (!window.gapi) { setTimeout(initGAPI, 200); return; }
+  gapi.load('client', async () => {
+    try {
+      await gapi.client.init({
+        apiKey: CONFIG.GOOGLE_API_KEY,
+        discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
+      });
+      state.gapiReady = true;
+      updateLinkStatus();
+    } catch (e) {
+      console.error('GAPI init failed', e);
+      state.gapiReady = false;
+      updateLinkStatus();
+    }
+  });
+}
+
+function initGIS() {
+  if (!window.google || !google.accounts || !google.accounts.oauth2) {
+    setTimeout(initGIS, 200); return;
+  }
+  try {
+    state.tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CONFIG.GOOGLE_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      callback: () => {} // overridden per request
+    });
+    state.gisReady = true;
+    // Reuse cached token if present
+    const cached = sessionStorage.getItem('spectral_token');
+    if (cached) {
+      try {
+        const t = JSON.parse(cached);
+        if (t.exp > Date.now()) state.accessToken = t.token;
+      } catch (_) {}
+    }
+    updateLinkStatus();
+  } catch (e) {
+    console.error('GIS init failed', e);
+    state.gisReady = false;
+    updateLinkStatus();
+  }
+}
+
+function requestToken() {
+  return new Promise((resolve, reject) => {
+    if (!state.tokenClient) return reject(new Error('NO_TOKEN_CLIENT'));
+    state.tokenClient.callback = (resp) => {
+      if (resp && resp.access_token) {
+        state.accessToken = resp.access_token;
+        const expSec = resp.expires_in ? resp.expires_in : 3000;
+        sessionStorage.setItem('spectral_token', JSON.stringify({
+          token: resp.access_token,
+          exp: Date.now() + expSec * 1000 - 30000
+        }));
+        resolve(resp.access_token);
+      } else {
+        reject(new Error('AUTH_DENIED'));
+      }
+    };
+    state.tokenClient.requestAccessToken({ prompt: state.accessToken ? '' : 'consent' });
+  });
+}
+
+async function uploadToDrive(blob, filename) {
+  let token = state.accessToken;
+  if (!token) token = await requestToken();
+
+  const metadata = {
+    name: filename,
+    mimeType: 'application/pdf',
+    parents: [CONFIG.DRIVE_FOLDER_ID]
+  };
+
+  const boundary = 'spectral_boundary_' + Date.now().toString(36);
+  const metaPart =
+    `--${boundary}\r\n` +
+    `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+    JSON.stringify(metadata) + `\r\n`;
+  const dataHeader =
+    `--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`;
+  const closing = `\r\n--${boundary}--`;
+
+  const pdfBytes = new Uint8Array(await blob.arrayBuffer());
+  const enc = new TextEncoder();
+  const head = enc.encode(metaPart + dataHeader);
+  const tail = enc.encode(closing);
+  const body = new Uint8Array(head.length + pdfBytes.length + tail.length);
+  body.set(head, 0);
+  body.set(pdfBytes, head.length);
+  body.set(tail, head.length + pdfBytes.length);
+
+  const url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name';
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': `multipart/related; boundary=${boundary}`
+    },
+    body
+  });
+
+  if (!resp.ok) {
+    // If token expired, clear and retry once
+    if (resp.status === 401) {
+      sessionStorage.removeItem('spectral_token');
+      state.accessToken = null;
+      const t = await requestToken();
+      return uploadToDrive(blob, filename);
+    }
+    const errText = await resp.text();
+    throw new Error(`HTTP_${resp.status}: ${errText.slice(0, 120)}`);
+  }
+  return await resp.json();
+}
+
+async function transmit() {
+  if (!channelOnline()) {
+    setStatus('// COMMAND CHANNEL OFFLINE. USE LOCAL DOWNLOAD.', true);
+    return;
+  }
+  setStatus('// PACKAGING TRANSMISSION…', false);
+  const btn = document.getElementById('btn-transmit');
+  btn.disabled = true;
+  try {
+    const blob = buildPdfBlob();
+    const fn = filenameFor();
+    setStatus('// HANDSHAKE WITH COMMAND…', false);
+    const result = await uploadToDrive(blob, fn);
+    setStatus(`// TRANSMISSION COMPLETE. FILE LOGGED TO COMMAND ARCHIVE :: ${result.name}`, false);
+  } catch (e) {
+    console.error(e);
+    const code = (e && e.message) ? e.message : 'UNKNOWN';
+    setStatus(`// TRANSMISSION FAILED // CODE [${code}]. CONTACT COMMAND.`, true);
+  } finally {
+    updateButtonStates();
+  }
+}
+
+function setStatus(msg, isError) {
+  const el = document.getElementById('transmit-status');
+  el.textContent = msg;
+  el.classList.toggle('amber', !!isError);
+}
+
+/* ====================================================================
+   BOOT SEQUENCE
+   ==================================================================== */
+
+const BOOT_LINES = [
+  '> POWER-ON SELF TEST .......... [OK]',
+  '> PHOSPHOR ALIGNMENT .......... [OK]',
+  '> SPECTRAL CALIBRATION ........ [OK]',
+  '> CRYPTO HANDSHAKE ............ [OK]',
+  '> INITIALIZING SPECTRAL SCANNER v2.6...',
+  '> LOADING CAMO ALGORITHMS .....',
+  '>   MARPAT-D ................ [LOADED]',
+  '>   WOODLAND-7B ............. [LOADED]',
+  '>   FRACTAL-G ............... [LOADED]',
+  '>   TERRAIN-X ............... [LOADED]',
+  '> COMMAND CHANNEL .... STANDBY',
+  '> SYSTEM READY. AWAITING OPERATIVE.'
+];
+
+function runBoot() {
+  const el = document.getElementById('boot');
+  let idx = 0;
+  const total = BOOT_LINES.length;
+  const lineDelay = 1500 / total; // ~125ms each
+  function tick() {
+    if (idx < total) {
+      el.textContent += BOOT_LINES[idx] + '\n';
+      idx++;
+      setTimeout(tick, lineDelay);
+    } else {
+      setTimeout(() => {
+        el.classList.add('done');
+        document.getElementById('ui').style.opacity = '1';
+      }, 250);
+    }
+  }
+  tick();
+}
+
+/* ====================================================================
+   CLOCK
+   ==================================================================== */
+
+function tickClock() {
+  const d = new Date();
+  const z = n => String(n).padStart(2, '0');
+  document.getElementById('clock').textContent =
+    `${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
+}
+
+/* ====================================================================
+   WIRE-UP
+   ==================================================================== */
+
+window.addEventListener('DOMContentLoaded', () => {
+  // Header
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  // UI build
+  buildHexInputs();
+  buildPatternCards();
+  renderThumbnails();
+
+  // Callsign
+  const cs = document.getElementById('callsign');
+  cs.addEventListener('input', () => {
+    state.callsign = cs.value;
+    updateButtonStates();
+  });
+
+  // Actions
+  document.getElementById('btn-execute').addEventListener('click', () => {
+    state.seed = (Math.random() * 1e9) | 0;
+    renderPreview();
+    renderThumbnails();
+    setStatus('// PATTERN RENDERED. READY FOR TRANSMISSION.', false);
+  });
+  document.getElementById('btn-recalibrate').addEventListener('click', () => {
+    state.seed = (Math.random() * 1e9) | 0;
+    renderPreview();
+    renderThumbnails();
+    setStatus('// NEW SEED LOCKED. PATTERN RECALIBRATED.', false);
+  });
+  document.getElementById('btn-download').addEventListener('click', downloadLocal);
+  document.getElementById('btn-transmit').addEventListener('click', transmit);
+
+  // Initial state
+  updateLinkStatus();
+
+  // Boot animation
+  runBoot();
+
+  // Google APIs (only if config filled)
+  if (configFilled() && navigator.onLine) {
+    initGAPI();
+    initGIS();
+  } else {
+    updateLinkStatus();
+  }
+});
+</script>
+
+</body>
+</html>
