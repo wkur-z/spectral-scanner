@@ -593,33 +593,6 @@ button.term.term-small {
   letter-spacing: 1px;
 }
 
-.palette-templates {
-  border-top: 1px dashed var(--border-dim);
-  padding-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.palette-subtitle {
-  font-family: 'VT323', monospace;
-  font-size: 14px;
-  letter-spacing: 1.5px;
-  color: var(--green-bright);
-  text-align: center;
-  text-shadow: 0 0 5px currentColor;
-}
-.palette-template-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.palette-template-grid button {
-  width: 100%;
-  font-size: 12px;
-  padding: 4px 6px;
-  letter-spacing: 1px;
-}
-
 .palette-hint {
   font-size: 11px;
   letter-spacing: 1px;
@@ -749,14 +722,6 @@ body:not(.auto-mode) .paint-mode-only { display: block; }
           <button class="term term-small" id="btn-undo" disabled>UNDO</button>
           <button class="term term-small" id="btn-reset" disabled>RESET</button>
           <button class="term term-small amber" id="btn-randomize" disabled>RANDOMIZE</button>
-        </div>
-        <div class="palette-templates" id="palette-templates">
-          <div class="palette-subtitle">▓ HIDDEN MOTIFS ▓</div>
-          <div class="palette-template-grid">
-            <button class="term term-small" data-template="smiley" disabled>▶ SMILEY :)</button>
-            <button class="term term-small" data-template="peaks"  disabled>▶ SNOWY PEAKS</button>
-            <button class="term term-small" data-template="epic"   disabled>▶ EPIC BADGE</button>
-          </div>
         </div>
         <div class="palette-hint">
           // KEYS 1-4 SWITCH ACTIVE COLOR<br>
@@ -1015,13 +980,15 @@ function autoRender(p, ctx, w, h, colors, seed) {
    -------------------------------------------------------------- */
 
 function renderMarpat(ctx, w, h, colors, seed) {
-  const cellsX = 80;
-  const cellsY = 100;
+  // ~30% more cells than the original 80x100 grid (sqrt(1.3) scaling).
+  const cellsX = 91;
+  const cellsY = 114;
   const cellW = w / cellsX;
   const cellH = h / cellsY;
   const noise = makePerlin(seed);
   const noise2 = makePerlin(seed ^ 0xA5A5A5);
-  const freq = 0.09;
+  // freq scaled proportionally to keep cluster size visually consistent.
+  const freq = 0.079;
 
   ctx.imageSmoothingEnabled = false;
   for (let j = 0; j < cellsY; j++) {
@@ -1049,7 +1016,8 @@ function renderMarpat(ctx, w, h, colors, seed) {
 function computeWoodland(seed, w, h) {
   const rnd = mulberry32(seed);
   const pxPerInch = w / 8.5;
-  const total = Math.floor(80 + rnd() * 71);
+  // 30% more blobs than the original 80-150 range.
+  const total = Math.floor(104 + rnd() * 92);
   const shapes = [{ kind: 'bg', w, h, cx: w / 2, cy: h / 2 }]; // shape #0 = background
 
   for (let k = 0; k < total; k++) {
@@ -1107,7 +1075,8 @@ function renderWoodland(ctx, w, h, colors, seed) {
 function computeFractalG(seed, w, h) {
   const rnd = mulberry32(seed);
   const pxPerInch = w / 8.5;
-  const cellSize = 1.0 * pxPerInch;
+  // Cell size shrunk so ~30% more quads (each → 2 triangles).
+  const cellSize = 0.877 * pxPerInch;
   const cols = Math.ceil(w / cellSize) + 1;
   const rows = Math.ceil(h / cellSize) + 1;
 
@@ -1170,8 +1139,8 @@ function renderFractalG(ctx, w, h, colors, seed) {
 
 function computeHexfield(seed, w, h) {
   const pxPerInch = w / 8.5;
-  // Hex "size" = distance from center to vertex. ~0.55 inch hexes → ~150 hexes.
-  const size = 0.55 * pxPerInch;
+  // Hex "size" shrunk so we get ~30% more hexes (~195 total).
+  const size = 0.482 * pxPerInch;
   const hexW = Math.sqrt(3) * size;       // horizontal spacing
   const hexH = 1.5 * size;                // vertical spacing (3/4 of hex height)
 
@@ -1227,9 +1196,9 @@ function renderHexfield(ctx, w, h, colors, seed) {
 function computeDragonscale(seed, w, h) {
   const rnd = mulberry32(seed);
   const pxPerInch = w / 8.5;
-  // Aim for cells averaging ~0.65 inch diameter → ~120 seeds on 8.5x11.
-  const targetArea = (0.65 * pxPerInch) * (0.65 * pxPerInch) * Math.PI / 4;
-  const total = Math.max(60, Math.min(200, Math.round((w * h) / targetArea)));
+  // Cells shrunk to ~0.57 inch diameter → ~30% more (~156 seeds).
+  const targetArea = (0.57 * pxPerInch) * (0.57 * pxPerInch) * Math.PI / 4;
+  const total = Math.max(80, Math.min(260, Math.round((w * h) / targetArea)));
 
   const shapes = [];
   // Place seeds via "blue-noise-ish" sampling: random with min-distance.
@@ -1733,83 +1702,6 @@ function paintActionReset() {
   updateButtonStates();
 }
 
-/* ====================================================================
-   HIDDEN MOTIF TEMPLATES
-   Each template is a function (x, y) → luminance rank 0..3.
-   x, y are 0..1 normalized canvas coordinates. Rank 0 = lightest student
-   color, 3 = darkest. Applying a template assigns every shape based on
-   sampling its centroid in this template space — so the camo "snaps"
-   into a recognizable image while still using the student's colors.
-   ==================================================================== */
-
-function templateSmiley(x, y) {
-  const dx = x - 0.5, dy = y - 0.55;
-  const r = Math.sqrt(dx*dx + dy*dy);
-  if (r > 0.40) return 3;                       // outside face: darkest
-  const e1 = (x - 0.38)*(x - 0.38) + (y - 0.45)*(y - 0.45);
-  const e2 = (x - 0.62)*(x - 0.62) + (y - 0.45)*(y - 0.45);
-  if (e1 < 0.003 || e2 < 0.003) return 3;       // eyes
-  // U-shaped smile
-  const dxm = x - 0.5;
-  const mouthArc = 0.65 + 0.18 * dxm * dxm * 12;
-  if (x > 0.32 && x < 0.68 && y > mouthArc - 0.05 && y < mouthArc + 0.04) return 3;
-  return 0;                                      // face: lightest
-}
-
-function templatePeaks(x, y) {
-  const peak1 = 0.55 - 1.4 * Math.abs(x - 0.22);
-  const peak2 = 0.35 - 1.1 * Math.abs(x - 0.55);
-  const peak3 = 0.48 - 1.2 * Math.abs(x - 0.82);
-  const horizon = Math.max(peak1, peak2, peak3, 0.62);
-  if (y < 0.20) return 1;                        // upper sky
-  if (y < horizon - 0.06) return 1;              // sky
-  if (y < horizon + 0.02) return 0;              // snow cap (lightest)
-  if (y < 0.88) return 3;                        // mountain body (darkest)
-  return 2;                                      // foreground ground
-}
-
-function templateEpic(x, y) {
-  const dx = x - 0.5, dy = y - 0.5;
-  const r = Math.sqrt(dx*dx + dy*dy);
-  if (r > 0.45) return 3;                        // outside disc
-  // Within the disc: 3 horizontal bands roughly matching EPIC mountain
-  const peakLine = 0.30 + 0.12 * Math.cos(Math.PI * 2 * (x - 0.5));
-  if (y < peakLine) return 0;                    // sun/sky (light)
-  if (y < 0.45) return 1;                        // orange band
-  if (y < 0.72) return 3;                        // navy mountain
-  return 2;                                      // green river
-}
-
-const HIDDEN_TEMPLATES = {
-  smiley: templateSmiley,
-  peaks:  templatePeaks,
-  epic:   templateEpic
-};
-
-function applyTemplate(name) {
-  const fn = HIDDEN_TEMPLATES[name];
-  if (!fn || !state.shapes || !allColorsValid()) return;
-  const ranks = paletteLuminanceRanks(state.colors);
-  for (let i = 0; i < state.shapes.length; i++) {
-    const s = state.shapes[i];
-    if (s.kind === 'logo') continue;             // leave logos alone
-    const tx = s.cx / PAINT_W;
-    const ty = s.cy / PAINT_H;
-    const rank = Math.max(0, Math.min(3, fn(tx, ty)));
-    const newAssign = ranks[rank];
-    if (state.shapeAssignments[i] !== newAssign) {
-      state.history.push({ idx: i, prev: state.shapeAssignments[i] });
-      state.shapeAssignments[i] = newAssign;
-    }
-  }
-  if (state.history.length > 5000) state.history.splice(0, state.history.length - 5000);
-  repaintAllShapes();
-  drawShapeNumbersOnUnpainted();
-  updatePaintCounter();
-  updateButtonStates();
-  setStatus(`// MOTIF "${name.toUpperCase()}" REVEALED. KEEP PAINTING OR ADJUST.`, false);
-}
-
 function paintActionRandomize() {
   if (!state.shapes) return;
   const rnd = mulberry32((Math.random() * 1e9) | 0);
@@ -1953,10 +1845,6 @@ function updateButtonStates() {
   if (btnReset)     btnReset.disabled     = !paintReady;
   if (btnRandomize) btnRandomize.disabled = !paintReady;
   if (btnUndo)      btnUndo.disabled      = !paintReady || state.history.length === 0;
-  // Template buttons enable as soon as a pattern + valid colors exist.
-  document.querySelectorAll('button[data-template]').forEach(b => {
-    b.disabled = !paintReady;
-  });
   // Transmit + download enabled when something has been rendered.
   document.getElementById('btn-download').disabled = !state.rendered;
   document.getElementById('btn-transmit').disabled = !state.rendered || !channelOnline();
@@ -2277,10 +2165,6 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-reset').addEventListener('click', paintActionReset);
   document.getElementById('btn-randomize').addEventListener('click', paintActionRandomize);
 
-  // Hidden motif templates
-  document.querySelectorAll('button[data-template]').forEach(btn => {
-    btn.addEventListener('click', () => applyTemplate(btn.dataset.template));
-  });
 
   // Keyboard shortcuts: 1-4 switch active palette color
   window.addEventListener('keydown', (e) => {
