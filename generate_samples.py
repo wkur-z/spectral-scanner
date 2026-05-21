@@ -102,21 +102,60 @@ def luminance(rgb):
 
 
 # ====================================================================
-# EPIC CAMPUS LOGO STAMP
-# Drops the official EPIC Campus horizontal logo onto a white rounded
-# plate at a seed-derived position. Mirrors the JS implementation in
-# index.html so samples preview what students will actually see.
+# EPIC CAMPUS ICON STAMP
+# Scatters 4 recolored copies of the circular EPIC icon across each
+# camo, one per quadrant. Each copy is recolored to the student
+# palette by nearest-color match against the source logo regions.
+# Mirrors the JS implementation in index.html.
 # ====================================================================
+
+import numpy as np
 
 EPIC_LOGO_PATH = os.path.join(os.path.dirname(__file__), 'assets', 'epic-logo.png')
 
+# Source logo region colors (brightest → darkest):
+# [white background, orange peaks, green river, navy mountain]
+LOGO_REGION_RGB = np.array([
+    [255, 255, 255],
+    [232, 119,  34],
+    [ 62, 157,  67],
+    [ 27,  61,  94],
+], dtype=np.int32)
 
-def _rounded_rect_mask(w, h, radius):
-    """Build an L-mode mask shaped like a rounded rectangle."""
-    mask = Image.new('L', (w, h), 0)
-    d = ImageDraw.Draw(mask)
-    d.rounded_rectangle([0, 0, w - 1, h - 1], radius=radius, fill=255)
-    return mask
+
+def _recolor_icon(palette_rgb):
+    icon = Image.open(EPIC_LOGO_PATH).convert('RGBA')
+    arr = np.array(icon)
+    rgb = arr[..., :3].astype(np.int32)
+    alpha = arr[..., 3]
+    h, w = rgb.shape[:2]
+    flat = rgb.reshape(-1, 3)
+
+    # Sort student colors brightest → darkest so they align rank-by-rank
+    # with LOGO_REGION_RGB.
+    sorted_student = sorted(
+        palette_rgb,
+        key=lambda c: -(0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2])
+    )
+
+    # For each pixel, find which logo region color it's closest to.
+    diffs = flat[:, None, :] - LOGO_REGION_RGB[None, :, :]
+    dists = (diffs * diffs).sum(axis=2)
+    nearest = dists.argmin(axis=1)
+
+    new_rgb = np.zeros_like(flat)
+    for k in range(4):
+        mask = nearest == k
+        new_rgb[mask] = sorted_student[k]
+
+    out = np.zeros_like(arr)
+    out[..., :3] = new_rgb.reshape(h, w, 3)
+    out[..., 3] = alpha
+    # Zero RGB where fully transparent
+    transparent = alpha < 16
+    out[transparent, :3] = 0
+    out[transparent, 3] = 0
+    return Image.fromarray(out, 'RGBA')
 
 
 def embed_epic_mark(img, w, h, palette_rgb, seed):
@@ -124,45 +163,18 @@ def embed_epic_mark(img, w, h, palette_rgb, seed):
         return img
     rnd = mulberry32((seed ^ 0xE91CCA) & 0xFFFFFFFF)
     px_per_inch = w / 8.5
-    logo = Image.open(EPIC_LOGO_PATH).convert('RGBA')
-    mark_w = int(3.0 * px_per_inch)
-    mark_h = int(mark_w * logo.size[1] / logo.size[0])
-    cx = (0.25 + rnd() * 0.5) * w
-    cy = (0.25 + rnd() * 0.5) * h
-    x = int(cx - mark_w / 2)
-    y = int(cy - mark_h / 2)
-
-    pad_x = int(mark_w * 0.06)
-    pad_y = int(mark_h * 0.20)
-    plate_x = x - pad_x
-    plate_y = y - pad_y
-    plate_w = mark_w + pad_x * 2
-    plate_h = mark_h + pad_y * 2
-    radius = int(min(plate_w, plate_h) * 0.18)
-
-    # Soft drop shadow for the white plate
-    shadow_offset = max(1, int(px_per_inch * 0.02))
-    blur = max(1, int(px_per_inch * 0.04))
-    shadow = Image.new('RGBA', (plate_w + blur * 4, plate_h + blur * 4), (0, 0, 0, 0))
-    sdraw = ImageDraw.Draw(shadow)
-    sdraw.rounded_rectangle(
-        [blur * 2, blur * 2, blur * 2 + plate_w - 1, blur * 2 + plate_h - 1],
-        radius=radius, fill=(0, 0, 0, 90)
+    icon_size = int(1.4 * px_per_inch)
+    recolored = _recolor_icon(palette_rgb).resize(
+        (icon_size, icon_size), Image.LANCZOS
     )
-    from PIL import ImageFilter
-    shadow = shadow.filter(ImageFilter.GaussianBlur(blur))
-    img.paste(shadow,
-              (plate_x - blur * 2 + shadow_offset, plate_y - blur * 2 + shadow_offset),
-              shadow)
 
-    # White rounded plate
-    plate = Image.new('RGBA', (plate_w, plate_h), (255, 255, 255, 255))
-    plate_mask = _rounded_rect_mask(plate_w, plate_h, radius)
-    img.paste(plate, (plate_x, plate_y), plate_mask)
-
-    # Logo on top, scaled
-    logo_scaled = logo.resize((mark_w, mark_h), Image.LANCZOS)
-    img.paste(logo_scaled, (x, y), logo_scaled)
+    # 4 placements, one per quadrant; middle 60% of each quadrant.
+    for q in range(4):
+        qx = q % 2
+        qy = q // 2
+        x = int((qx * 0.5 + 0.10 + rnd() * 0.30) * w - icon_size / 2)
+        y = int((qy * 0.5 + 0.10 + rnd() * 0.30) * h - icon_size / 2)
+        img.paste(recolored, (x, y), recolored)
     return img
 
 
