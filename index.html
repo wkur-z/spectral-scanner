@@ -999,39 +999,6 @@ function embedEpicMark(ctx, w, h, colors, seed) {
     ctx.drawImage(EPIC_LOGO_IMG, x, y, iconSize, iconSize);
   }
 }
-function embedEpicMark(ctx, w, h, colors, seed) {
-  const recolored = recolorIconCanvas(colors);
-  if (!recolored) return;
-
-  const rnd = mulberry32((seed ^ 0xE91CCA) >>> 0);
-  const pxPerInch = w / 8.5;
-  const iconSize = 1.4 * pxPerInch;
-
-  // 4 placements, one per quadrant of the sheet.
-  // Each quadrant is a 0.5 × 0.5 unit square; we place the icon
-  // somewhere in the middle 60% of that square (offset 0.10–0.40).
-  for (let q = 0; q < 4; q++) {
-    const qx = q % 2;
-    const qy = Math.floor(q / 2);
-    const x = (qx * 0.5 + 0.10 + rnd() * 0.30) * w - iconSize / 2;
-    const y = (qy * 0.5 + 0.10 + rnd() * 0.30) * h - iconSize / 2;
-    ctx.drawImage(recolored, x, y, iconSize, iconSize);
-  }
-}
-function drawRoundedRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
-
 /* ====================================================================
    COLOR HELPERS
    ==================================================================== */
