@@ -12,6 +12,7 @@ Test palette: #4A7C2B, #8B6F47, #2D3E1F, #C4B896
 
 import math
 import os
+import numpy as np
 from PIL import Image, ImageDraw
 
 # ---- Sample resolution (smaller than the 8.5"x11" print canvas) ----
@@ -271,6 +272,91 @@ def render_fractalg(seed):
 
 
 # ====================================================================
+# HEXFIELD-6 :: Honeycomb Array
+# ====================================================================
+
+def render_hexfield(seed):
+    rgbs = [hex_to_rgb(c) for c in PALETTE]
+    img = Image.new('RGB', (W, H), rgbs[0])
+    draw = ImageDraw.Draw(img)
+    rnd = mulberry32(seed)
+    size = 0.55 * PX_PER_INCH
+    hex_w = math.sqrt(3) * size
+    hex_h = 1.5 * size
+    cols = math.ceil(W / hex_w) + 2
+    rows = math.ceil(H / hex_h) + 2
+
+    for j in range(rows):
+        for i in range(cols):
+            cx = (i + (0.5 if j % 2 else 0)) * hex_w
+            cy = j * hex_h
+            if cx + hex_w < 0 or cy + hex_h < 0:
+                continue
+            if cx - hex_w > W or cy - hex_h > H:
+                continue
+            verts = []
+            for k in range(6):
+                ang = (math.pi / 3) * k - math.pi / 2
+                verts.append((cx + math.cos(ang) * size, cy + math.sin(ang) * size))
+            draw.polygon(verts, fill=rgbs[int(rnd() * 4)])
+    return embed_epic_mark(img, W, H, rgbs, seed)
+
+
+# ====================================================================
+# DRAGONSCALE-V :: Cellular Mosaic (Voronoi)
+# ====================================================================
+
+def render_dragonscale(seed):
+    rgbs = [hex_to_rgb(c) for c in PALETTE]
+    rnd = mulberry32(seed)
+    # Place seeds with blue-noise-ish min-distance sampling
+    target_area = (0.65 * PX_PER_INCH) ** 2 * math.pi / 4
+    total = max(60, min(200, round((W * H) / target_area)))
+    min_dist = math.sqrt((W * H) / total) * 0.6
+    seeds = []
+    attempts = 0
+    while len(seeds) < total and attempts < total * 30:
+        attempts += 1
+        cx = rnd() * W
+        cy = rnd() * H
+        ok = True
+        for sx, sy, _ in seeds:
+            if (cx - sx) ** 2 + (cy - sy) ** 2 < min_dist ** 2:
+                ok = False
+                break
+        if ok:
+            seeds.append((cx, cy, int(rnd() * 4)))
+
+    # Brute-force nearest-seed at downsampled resolution
+    scale = max(1, W // 300)
+    ww = math.ceil(W / scale)
+    hh = math.ceil(H / scale)
+    sx_arr = np.array([s[0] / scale for s in seeds])
+    sy_arr = np.array([s[1] / scale for s in seeds])
+    color_idx = np.array([s[2] for s in seeds])
+
+    xs = np.arange(ww)[None, :]
+    ys = np.arange(hh)[:, None]
+    # Distance squared from each pixel to each seed, vectorized
+    nearest = np.zeros((hh, ww), dtype=np.int32)
+    best_d = np.full((hh, ww), np.inf)
+    for k in range(len(seeds)):
+        dx = xs - sx_arr[k]
+        dy = ys - sy_arr[k]
+        d = dx * dx + dy * dy
+        mask = d < best_d
+        nearest[mask] = k
+        best_d[mask] = d[mask]
+
+    arr = np.zeros((hh, ww, 3), dtype=np.uint8)
+    for k in range(len(seeds)):
+        arr[nearest == k] = rgbs[color_idx[k]]
+    small = Image.fromarray(arr, 'RGB')
+    big = small.resize((W, H), Image.NEAREST)
+    return embed_epic_mark(big, W, H, rgbs, seed)
+
+
+# ====================================================================
 # TERRAIN-X
 # ====================================================================
 
@@ -302,10 +388,12 @@ def render_terrainx(seed):
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     jobs = [
-        ('MARPAT-D',    render_marpat),
-        ('WOODLAND-7B', render_woodland),
-        ('FRACTAL-G',   render_fractalg),
-        ('TERRAIN-X',   render_terrainx),
+        ('MARPAT-D',      render_marpat),
+        ('WOODLAND-7B',   render_woodland),
+        ('FRACTAL-G',     render_fractalg),
+        ('HEXFIELD-6',    render_hexfield),
+        ('DRAGONSCALE-V', render_dragonscale),
+        ('TERRAIN-X',     render_terrainx),
     ]
     for name, fn in jobs:
         print(f'... rendering {name}')

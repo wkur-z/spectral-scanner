@@ -52,37 +52,59 @@ TRANSMIT button stops working. See "**IF YOU'RE TAKING OVER**" below.
 
 ---
 
-## HOW STUDENTS USE IT
-
-Hand this part to students or read it aloud:
+## HOW STUDENTS USE IT (paint mode — the primary workflow)
 
 1. Go to **https://wkur-z.github.io/spectral-scanner/**
 2. Wait for the boot sequence (the "POWER-ON SELF TEST" text).
 3. Type your **operative callsign** — format is `FIRST LAST :: CALLSIGN`,
-   e.g. `JANE DOE :: BEARCAT` or `SAM SMITH :: AIRMASTER`. The
-   placeholder text in the field shows the format.
+   e.g. `JANE DOE :: BEARCAT` or `SAM SMITH :: AIRMASTER`.
 4. Type the **4 hex codes** from your Arduino RGB sensor reading.
    - Or click the amber **`▶ LOAD EPIC TEST PALETTE`** button to fill in
      EPIC's brand colors (white, orange, navy, green) for a quick demo.
-     This also auto-fills the callsign with `OPERATIVE_TEST` if blank,
-     so EXECUTE activates in one click.
-5. Pick one of the 4 **camo patterns** (MARPAT-D, WOODLAND-7B,
-   FRACTAL-G, TERRAIN-X).
-6. Click `EXECUTE` — preview shows your camo with the EPIC Campus
-   logo stamped in 4 places (full color, scattered randomly).
-7. Click `RECALIBRATE` to roll a new random layout — same colors, new
-   pattern, EPIC logos move to new positions.
-8. When you're happy, click `▲ TRANSMIT TO COMMAND ▲` — done. Your PDF
-   is now in the camp's folder.
+     This also auto-fills the callsign with `OPERATIVE_TEST` if blank.
+5. Pick one of the **4 paintable camo patterns**:
+   - WOODLAND-7B (~100 organic blobs)
+   - FRACTAL-G (~300 triangles)
+   - HEXFIELD-6 (~150 hexagons)
+   - DRAGONSCALE-V (~120 Voronoi cells)
+6. The canvas shows the pattern in **grayscale with numbered shapes**.
+   Pick a color from the palette panel on the right (or press keys
+   **1–4** to switch active color).
+7. **Click / tap each shape** to fill it with the active color. The
+   counter shows progress: `PAINTED :: 47 / 312`.
+8. Helpful buttons on the right:
+   - **FILL ALL** — set every shape to the active color (good starting
+     base coat).
+   - **UNDO** — revert the last shape change. Cmd/Ctrl+Z also works.
+   - **RESET** — clear everything back to unpainted gray.
+   - **RANDOMIZE** — auto-assign random colors (escape hatch if a kid
+     is overwhelmed).
+9. When happy, click `▲ TRANSMIT TO COMMAND ▲` — your PDF lands in the
+   camp's Drive folder. Or `DOWNLOAD LOCAL COPY` for a local save.
 
-Students never sign in to Google. They never need an account.
+Students never sign in to Google.
 
-### Why the EPIC logos?
+### The EPIC logo stamp
 
 Every generated camo has 4 copies of the official EPIC Campus logo
 stamped on it (mountain icon + "EPIC CAMPUS" wordmark + "EXPLORATIVE
 PATHWAYS FOR INNOVATIVE CAREERS" tagline). When students take their
 sticker-decorated planes home, the EPIC branding goes with them.
+
+### Auto-field (OVERRIDE) mode — for short classes
+
+If the class is running short on time, type **`OVERRIDE`** or
+**`AUTOFIELD`** as a prefix in the callsign field (followed by the
+student's name), e.g. `OVERRIDE JANE DOE :: BEARCAT`. The codeword
+gets stripped automatically. The Step 03 section flips to the older
+one-click auto-generation flow:
+
+- Two additional patterns appear (`MARPAT-D` digital camo and
+  `TERRAIN-X` topographic) that aren't paintable.
+- One `EXECUTE` button generates the entire camo in seconds.
+- `RECALIBRATE` rolls a new random version with the same colors.
+
+Refreshing the page returns to paint mode by default.
 
 ---
 

@@ -496,6 +496,127 @@ button.term.term-small {
 }
 
 /* ============================================================
+   PAINT MODE — palette panel + clickable canvas
+   ============================================================ */
+
+.paint-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 18px;
+  align-items: start;
+}
+
+.paint-canvas-frame canvas {
+  cursor: crosshair;
+}
+
+.palette-panel {
+  border: 1px solid var(--border);
+  background: rgba(0, 25, 0, 0.25);
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-family: 'Share Tech Mono', monospace;
+}
+
+.palette-title {
+  font-family: 'VT323', monospace;
+  font-size: 18px;
+  letter-spacing: 2px;
+  color: var(--green-bright);
+  text-align: center;
+}
+
+.palette-swatches {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.palette-swatch {
+  position: relative;
+  height: 56px;
+  border: 2px solid var(--border);
+  background: #000;
+  cursor: pointer;
+  transition: border-color 0.12s, transform 0.08s, box-shadow 0.12s;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 4px 0;
+  font-family: 'VT323', monospace;
+  font-size: 14px;
+  letter-spacing: 1.5px;
+  color: rgba(0, 0, 0, 0.6);
+  text-shadow: 0 1px 0 rgba(255,255,255,0.7);
+  user-select: none;
+}
+.palette-swatch:hover {
+  border-color: var(--green-bright);
+  transform: translateY(-1px);
+}
+.palette-swatch.active {
+  border-color: var(--green-bright);
+  box-shadow: 0 0 12px var(--green-bright), inset 0 0 6px rgba(0,0,0,0.4);
+}
+.palette-swatch.active::after {
+  content: '◄';
+  position: absolute;
+  top: -8px;
+  right: -2px;
+  color: var(--green-bright);
+  font-size: 14px;
+  text-shadow: 0 0 6px currentColor;
+}
+
+.palette-counter {
+  font-family: 'VT323', monospace;
+  font-size: 16px;
+  letter-spacing: 1.5px;
+  color: var(--green-dim);
+  text-align: center;
+  padding: 4px 0;
+  border-top: 1px dashed var(--border-dim);
+  border-bottom: 1px dashed var(--border-dim);
+}
+
+.palette-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.palette-actions button {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
+.palette-hint {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--green-dim);
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* Mode visibility — body class toggles which layout shows */
+body.auto-mode .paint-mode-only { display: none !important; }
+body.auto-mode .auto-mode-only  { display: block !important; }
+body:not(.auto-mode) .auto-mode-only  { display: none !important; }
+body:not(.auto-mode) .paint-mode-only { display: block; }
+
+@media (max-width: 700px) {
+  .paint-layout {
+    grid-template-columns: 1fr;
+  }
+  .palette-panel {
+    order: -1;
+  }
+}
+
+/* ============================================================
    STATUS LINE
    ============================================================ */
 
@@ -578,17 +699,51 @@ button.term.term-small {
 
 <!-- STEP 03 -->
 <section class="section">
-  <div class="section-label cursor">[ STEP 03 ] :: PATTERN PREVIEW // VISUAL FEED</div>
-  <div class="preview-frame">
-    <span class="br-bl">⌙</span>
-    <span class="br-br">⌎</span>
-    <div id="preview-container">
-      <div class="preview-empty">// AWAITING SPECTRAL DATA<br>// EXECUTE TO RENDER FEED</div>
+  <div class="section-label cursor" id="step03-label">[ STEP 03 ] :: HAND-PAINT YOUR FIELD KIT</div>
+
+  <!-- PAINT MODE layout (default) -->
+  <div class="paint-mode-only" id="paint-mode-block">
+    <div class="paint-layout">
+      <div class="preview-frame paint-canvas-frame">
+        <span class="br-bl">⌙</span>
+        <span class="br-br">⌎</span>
+        <div id="paint-canvas-container">
+          <div class="preview-empty">// AWAITING SPECTRAL DATA<br>// LOAD COLORS &amp; PICK A PATTERN ABOVE</div>
+        </div>
+      </div>
+      <aside class="palette-panel" id="palette-panel">
+        <div class="palette-title">&gt;&gt; PALETTE &lt;&lt;</div>
+        <div class="palette-swatches" id="palette-swatches">
+          <!-- Built by JS -->
+        </div>
+        <div class="palette-counter" id="paint-counter">PAINTED :: 0 / 0</div>
+        <div class="palette-actions">
+          <button class="term term-small" id="btn-fill-all" disabled>FILL ALL</button>
+          <button class="term term-small" id="btn-undo" disabled>UNDO</button>
+          <button class="term term-small" id="btn-reset" disabled>RESET</button>
+          <button class="term term-small amber" id="btn-randomize" disabled>RANDOMIZE</button>
+        </div>
+        <div class="palette-hint">
+          // KEYS 1-4 SWITCH ACTIVE COLOR<br>
+          // CLICK / TAP A SHAPE TO PAINT IT
+        </div>
+      </aside>
     </div>
   </div>
-  <div class="button-row" style="justify-content: center; margin-top: 16px;">
-    <button class="term" id="btn-execute" disabled>EXECUTE &gt;&gt; GENERATE PATTERN</button>
-    <button class="term amber" id="btn-recalibrate" disabled>RECALIBRATE &gt;&gt; NEW SEED</button>
+
+  <!-- AUTO MODE layout (visible only after OVERRIDE/AUTOFIELD trigger) -->
+  <div class="auto-mode-only" id="auto-mode-block" style="display:none;">
+    <div class="preview-frame">
+      <span class="br-bl">⌙</span>
+      <span class="br-br">⌎</span>
+      <div id="preview-container">
+        <div class="preview-empty">// AWAITING SPECTRAL DATA<br>// EXECUTE TO RENDER FEED</div>
+      </div>
+    </div>
+    <div class="button-row" style="justify-content: center; margin-top: 16px;">
+      <button class="term" id="btn-execute" disabled>EXECUTE &gt;&gt; GENERATE PATTERN</button>
+      <button class="term amber" id="btn-recalibrate" disabled>RECALIBRATE &gt;&gt; NEW SEED</button>
+    </div>
   </div>
 </section>
 
@@ -625,10 +780,20 @@ const CONFIG = {
    ==================================================================== */
 
 const PATTERNS = [
-  { id: 'MARPAT-D',    label: 'MARPAT-D :: DIGITAL TESSELLATION',  render: renderMarpat   },
-  { id: 'WOODLAND-7B', label: 'WOODLAND-7B :: ORGANIC BLOB',       render: renderWoodland },
-  { id: 'FRACTAL-G',   label: 'FRACTAL-G :: GEOMETRIC SHATTER',    render: renderFractalG },
-  { id: 'TERRAIN-X',   label: 'TERRAIN-X :: TOPOGRAPHIC FIELD',    render: renderTerrainX }
+  // Paintable patterns (primary mode — students hand-paint each shape).
+  { id: 'WOODLAND-7B',   label: 'WOODLAND-7B :: ORGANIC BLOB',     paintable: true,
+    compute: computeWoodland,    paint: paintWoodland,    render: renderWoodland    },
+  { id: 'FRACTAL-G',     label: 'FRACTAL-G :: GEOMETRIC SHATTER',  paintable: true,
+    compute: computeFractalG,    paint: paintFractalG,    render: renderFractalG    },
+  { id: 'HEXFIELD-6',    label: 'HEXFIELD-6 :: HONEYCOMB ARRAY',   paintable: true,
+    compute: computeHexfield,    paint: paintHexfield,    render: renderHexfield    },
+  { id: 'DRAGONSCALE-V', label: 'DRAGONSCALE-V :: CELLULAR MOSAIC', paintable: true,
+    compute: computeDragonscale, paint: paintDragonscale, render: renderDragonscale },
+  // Auto-only patterns (revealed in OVERRIDE/AUTOFIELD mode only).
+  { id: 'MARPAT-D',  label: 'MARPAT-D :: DIGITAL TESSELLATION', paintable: false,
+    render: renderMarpat   },
+  { id: 'TERRAIN-X', label: 'TERRAIN-X :: TOPOGRAPHIC FIELD',   paintable: false,
+    render: renderTerrainX }
 ];
 
 const STUB_PALETTE = ['#003311', '#006622', '#00AA2B', '#00FF41'];
@@ -642,9 +807,17 @@ const state = {
   callsign: '',
   hex: ['', '', '', ''],
   colors: [null, null, null, null], // expanded 6-char hex with '#' or null
-  pattern: 'MARPAT-D',
+  pattern: 'WOODLAND-7B',
   seed: (Math.random() * 1e9) | 0,
-  rendered: false
+  rendered: false,
+  // Paint mode state:
+  mode: 'paint',                 // 'paint' or 'auto'; auto unlocked by OVERRIDE/AUTOFIELD prefix
+  shapes: null,                  // current pattern's shape geometry, null until pattern picked
+  shapeAssignments: null,        // Int8Array, palette idx 0-3 per shape, -1 = unpainted
+  idCanvas: null,                // offscreen canvas with shape IDs encoded as RGB
+  idMapData: null,               // cached ImageData from idCanvas (for fast hit-test)
+  activeColorIdx: 0,             // which palette swatch is selected
+  history: []                    // undo stack: { idx, prev }
 };
 
 /* ====================================================================
@@ -753,7 +926,49 @@ function ts() {
    colors: array of 4 hex strings like '#RRGGBB'
    ==================================================================== */
 
-// ---- MARPAT-D :: Digital Tessellation ----------------------------
+/* --------------------------------------------------------------
+   Shared paint-mode helpers
+   -------------------------------------------------------------- */
+
+// Encode shape index 0..N-1 as RGB. Reserve 0,0,0 for "no shape".
+function encodeIdRgb(idx) {
+  const id = idx + 1;
+  return `rgb(${id & 255}, ${(id >> 8) & 255}, ${(id >> 16) & 255})`;
+}
+
+// Decode a shape index from raw r,g,b. Returns -1 if no shape.
+function decodeIdRgb(r, g, b) {
+  return (r | (g << 8) | (b << 16)) - 1;
+}
+
+// Generate a deterministic random assignment for "auto" mode.
+function autoAssignFromShapes(shapes, seed) {
+  const rnd = mulberry32((seed ^ 0xA1A1A1) >>> 0);
+  const arr = new Int8Array(shapes.length);
+  for (let i = 0; i < shapes.length; i++) arr[i] = Math.floor(rnd() * 4);
+  return arr;
+}
+
+// Style for unpainted shapes — varied grayscale with the shape number
+// drawn at the centroid so students can see what they're picking.
+function unpaintedFill(idx) {
+  const shade = 90 + ((idx * 47) % 90); // 90..180
+  return `rgb(${shade}, ${shade}, ${shade})`;
+}
+
+// Wrap a compute+paint pair so it can be called like the old render() —
+// used for thumbnails and auto-mode preview.
+function autoRender(p, ctx, w, h, colors, seed) {
+  const { shapes } = p.compute(seed, w, h);
+  const assigns = autoAssignFromShapes(shapes, seed);
+  p.paint(ctx, w, h, shapes, idx => colors[assigns[idx]]);
+  embedEpicMark(ctx, w, h, colors, seed);
+}
+
+/* --------------------------------------------------------------
+   MARPAT-D :: Digital Tessellation (auto-only)
+   -------------------------------------------------------------- */
+
 function renderMarpat(ctx, w, h, colors, seed) {
   const cellsX = 80;
   const cellsY = 100;
@@ -761,24 +976,20 @@ function renderMarpat(ctx, w, h, colors, seed) {
   const cellH = h / cellsY;
   const noise = makePerlin(seed);
   const noise2 = makePerlin(seed ^ 0xA5A5A5);
-  // Frequency tuned so average cluster is ~5-15 cells across.
-  const freq = 0.09; // 1/freq ≈ 11 cells
+  const freq = 0.09;
 
   ctx.imageSmoothingEnabled = false;
-
   for (let j = 0; j < cellsY; j++) {
     for (let i = 0; i < cellsX; i++) {
-      // Two octaves of noise → pick one of 4 colors
       const n1 = noise(i * freq, j * freq);
       const n2 = noise2(i * freq * 1.8 + 100, j * freq * 1.8 + 100);
-      const v = (n1 * 0.65 + n2 * 0.35); // [0,1]
+      const v = n1 * 0.65 + n2 * 0.35;
       let idx;
       if      (v < 0.25) idx = 0;
       else if (v < 0.50) idx = 1;
       else if (v < 0.75) idx = 2;
       else               idx = 3;
       ctx.fillStyle = colors[idx];
-      // Add 1 to dimensions to avoid hairline gaps from FP rounding
       ctx.fillRect(Math.floor(i * cellW), Math.floor(j * cellH),
                    Math.ceil(cellW) + 1, Math.ceil(cellH) + 1);
     }
@@ -786,82 +997,76 @@ function renderMarpat(ctx, w, h, colors, seed) {
   embedEpicMark(ctx, w, h, colors, seed);
 }
 
-// ---- WOODLAND-7B :: Organic Blob --------------------------------
-function renderWoodland(ctx, w, h, colors, seed) {
-  // Sort colors darkest -> lightest by luminance so darker blobs go down first
-  const ordered = sortByLuminance(colors);
-  // Background = darkest
-  ctx.fillStyle = ordered[0];
-  ctx.fillRect(0, 0, w, h);
+/* --------------------------------------------------------------
+   WOODLAND-7B :: Organic Blob (paintable)
+   -------------------------------------------------------------- */
 
+function computeWoodland(seed, w, h) {
   const rnd = mulberry32(seed);
-  // 80-150 blobs
-  const total = Math.floor(80 + rnd() * 71);
   const pxPerInch = w / 8.5;
+  const total = Math.floor(80 + rnd() * 71);
+  const shapes = [{ kind: 'bg', w, h, cx: w / 2, cy: h / 2 }]; // shape #0 = background
 
-  // Place blobs in passes from darker to lighter (skip index 0, already bg)
-  // Distribute the total across remaining 3 color tiers roughly evenly.
-  const buckets = [Math.floor(total / 3), Math.floor(total / 3), total - 2 * Math.floor(total / 3)];
+  for (let k = 0; k < total; k++) {
+    const cx = rnd() * w;
+    const cy = rnd() * h;
+    const r = (0.5 + rnd() * 1.0) * pxPerInch;
+    const points = 14 + Math.floor(rnd() * 8);
+    const phase = rnd() * Math.PI * 2;
+    const verts = [];
+    for (let i = 0; i < points; i++) {
+      const a = i * (Math.PI * 2 / points) + phase;
+      const rr = r * (0.55 + rnd() * 0.7);
+      verts.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]);
+    }
+    shapes.push({ kind: 'blob', cx, cy, r, verts });
+  }
+  return { shapes };
+}
 
-  for (let tier = 1; tier < 4; tier++) {
-    const color = ordered[tier];
-    const count = buckets[tier - 1];
-    for (let k = 0; k < count; k++) {
-      const cx = rnd() * w;
-      const cy = rnd() * h;
-      // Blob "radius" between 0.5 and 1.5 inches (so diameter 1-3 inches)
-      const r = (0.5 + rnd() * 1.0) * pxPerInch;
-      drawBlob(ctx, cx, cy, r, color, rnd);
+function paintWoodland(ctx, w, h, shapes, fillFn) {
+  for (let i = 0; i < shapes.length; i++) {
+    const s = shapes[i];
+    ctx.fillStyle = fillFn(i);
+    if (s.kind === 'bg') {
+      ctx.fillRect(0, 0, w, h);
+    } else {
+      const verts = s.verts;
+      const last = verts[verts.length - 1];
+      const first = verts[0];
+      ctx.beginPath();
+      ctx.moveTo((last[0] + first[0]) / 2, (last[1] + first[1]) / 2);
+      for (let j = 0; j < verts.length; j++) {
+        const cur = verts[j];
+        const next = verts[(j + 1) % verts.length];
+        const mid = [(cur[0] + next[0]) / 2, (cur[1] + next[1]) / 2];
+        ctx.quadraticCurveTo(cur[0], cur[1], mid[0], mid[1]);
+      }
+      ctx.closePath();
+      ctx.fill();
     }
   }
-  embedEpicMark(ctx, w, h, colors, seed);
 }
 
-function drawBlob(ctx, cx, cy, r, color, rnd) {
-  // Build an irregular polygon by sampling N angles with noisy radius.
-  const points = 14 + Math.floor(rnd() * 8); // 14-21 control points
-  const angStep = (Math.PI * 2) / points;
-  // Random per-blob phase for variety
-  const phase = rnd() * Math.PI * 2;
-  const verts = [];
-  for (let i = 0; i < points; i++) {
-    const a = i * angStep + phase;
-    // Radius jitter: 0.55r to 1.25r
-    const rr = r * (0.55 + rnd() * 0.7);
-    verts.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]);
-  }
-  // Smooth using quadratic curves through midpoints
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  const last = verts[verts.length - 1];
-  const first = verts[0];
-  let prev = [(last[0] + first[0]) / 2, (last[1] + first[1]) / 2];
-  ctx.moveTo(prev[0], prev[1]);
-  for (let i = 0; i < verts.length; i++) {
-    const cur = verts[i];
-    const next = verts[(i + 1) % verts.length];
-    const mid = [(cur[0] + next[0]) / 2, (cur[1] + next[1]) / 2];
-    ctx.quadraticCurveTo(cur[0], cur[1], mid[0], mid[1]);
-  }
-  ctx.closePath();
-  ctx.fill();
+function renderWoodland(ctx, w, h, colors, seed) {
+  autoRender(PATTERNS.find(p => p.id === 'WOODLAND-7B'), ctx, w, h, colors, seed);
 }
 
-// ---- FRACTAL-G :: Geometric Shatter ------------------------------
-function renderFractalG(ctx, w, h, colors, seed) {
+/* --------------------------------------------------------------
+   FRACTAL-G :: Geometric Shatter (paintable)
+   -------------------------------------------------------------- */
+
+function computeFractalG(seed, w, h) {
   const rnd = mulberry32(seed);
   const pxPerInch = w / 8.5;
-  // Average triangle edge 0.5-1.5 inches → grid spacing ~1.0 inch
   const cellSize = 1.0 * pxPerInch;
   const cols = Math.ceil(w / cellSize) + 1;
   const rows = Math.ceil(h / cellSize) + 1;
 
-  // Build jittered grid points
   const pts = [];
   for (let j = 0; j <= rows; j++) {
     pts.push([]);
     for (let i = 0; i <= cols; i++) {
-      // Jitter each interior point by up to 0.45 cellSize
       const isEdge = (i === 0 || j === 0 || i === cols || j === rows);
       const jx = isEdge ? 0 : (rnd() - 0.5) * cellSize * 0.9;
       const jy = isEdge ? 0 : (rnd() - 0.5) * cellSize * 0.9;
@@ -869,78 +1074,196 @@ function renderFractalG(ctx, w, h, colors, seed) {
     }
   }
 
-  // Fill background with first color to avoid any hairline gaps
-  ctx.fillStyle = colors[0];
-  ctx.fillRect(0, 0, w, h);
-
-  // For each quad, draw two triangles. Choose colors biased to differ from neighbors.
-  // Use Perlin to give a regional flavor (so it doesn't look like white noise),
-  // then nudge so adjacent triangles tend to differ.
-  const noise = makePerlin(seed ^ 0x12345);
-  const colorJitter = mulberry32(seed ^ 0x9988);
-
+  const shapes = [];
   for (let j = 0; j < rows; j++) {
     for (let i = 0; i < cols; i++) {
       const a = pts[j][i];
       const b = pts[j][i + 1];
       const c = pts[j + 1][i];
       const d = pts[j + 1][i + 1];
-
-      // Diagonal direction alternates pseudo-randomly per quad
       const altDiag = (((i * 73856093) ^ (j * 19349663) ^ seed) & 1) === 0;
-
-      const region = noise(i * 0.18, j * 0.18); // [0,1]
-      const baseIdx = Math.min(3, Math.floor(region * 4));
-
-      const tri1Idx = pickDifferent(baseIdx, colorJitter(), -1);
-      const tri2Idx = pickDifferent(baseIdx, colorJitter(), tri1Idx);
-
-      ctx.fillStyle = colors[tri1Idx];
-      ctx.beginPath();
       if (altDiag) {
-        // a-b-c and b-d-c
-        ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(c[0], c[1]); ctx.closePath();
+        shapes.push({ kind: 'tri', verts: [a, b, c], cx: (a[0]+b[0]+c[0])/3, cy: (a[1]+b[1]+c[1])/3 });
+        shapes.push({ kind: 'tri', verts: [b, d, c], cx: (b[0]+d[0]+c[0])/3, cy: (b[1]+d[1]+c[1])/3 });
       } else {
-        // a-b-d and a-d-c
-        ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(d[0], d[1]); ctx.closePath();
+        shapes.push({ kind: 'tri', verts: [a, b, d], cx: (a[0]+b[0]+d[0])/3, cy: (a[1]+b[1]+d[1])/3 });
+        shapes.push({ kind: 'tri', verts: [a, d, c], cx: (a[0]+d[0]+c[0])/3, cy: (a[1]+d[1]+c[1])/3 });
       }
-      ctx.fill();
-
-      ctx.fillStyle = colors[tri2Idx];
-      ctx.beginPath();
-      if (altDiag) {
-        ctx.moveTo(b[0], b[1]); ctx.lineTo(d[0], d[1]); ctx.lineTo(c[0], c[1]); ctx.closePath();
-      } else {
-        ctx.moveTo(a[0], a[1]); ctx.lineTo(d[0], d[1]); ctx.lineTo(c[0], c[1]); ctx.closePath();
-      }
-      ctx.fill();
     }
   }
-  embedEpicMark(ctx, w, h, colors, seed);
+  return { shapes };
 }
 
-function pickDifferent(base, r, avoidIdx) {
-  // 60% chance use base, 40% use a different neighbor color
-  let idx;
-  if (r < 0.6) idx = base;
-  else idx = (base + 1 + Math.floor(r * 3)) % 4;
-  if (idx === avoidIdx) idx = (idx + 1) % 4;
-  return idx;
+function paintFractalG(ctx, w, h, shapes, fillFn) {
+  for (let i = 0; i < shapes.length; i++) {
+    const v = shapes[i].verts;
+    ctx.fillStyle = fillFn(i);
+    ctx.beginPath();
+    ctx.moveTo(v[0][0], v[0][1]);
+    ctx.lineTo(v[1][0], v[1][1]);
+    ctx.lineTo(v[2][0], v[2][1]);
+    ctx.closePath();
+    ctx.fill();
+  }
 }
 
-// ---- TERRAIN-X :: Topographic Field ------------------------------
+function renderFractalG(ctx, w, h, colors, seed) {
+  autoRender(PATTERNS.find(p => p.id === 'FRACTAL-G'), ctx, w, h, colors, seed);
+}
+
+/* --------------------------------------------------------------
+   HEXFIELD-6 :: Honeycomb Array (paintable, NEW)
+   Pointy-top hex tiling. Each row offset by half a hex.
+   -------------------------------------------------------------- */
+
+function computeHexfield(seed, w, h) {
+  const pxPerInch = w / 8.5;
+  // Hex "size" = distance from center to vertex. ~0.55 inch hexes → ~150 hexes.
+  const size = 0.55 * pxPerInch;
+  const hexW = Math.sqrt(3) * size;       // horizontal spacing
+  const hexH = 1.5 * size;                // vertical spacing (3/4 of hex height)
+
+  const cols = Math.ceil(w / hexW) + 2;
+  const rows = Math.ceil(h / hexH) + 2;
+  const shapes = [];
+
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      const cx = (i + (j % 2 ? 0.5 : 0)) * hexW;
+      const cy = j * hexH;
+      // Skip hexes fully outside the canvas
+      if (cx + hexW < 0 || cy + hexH < 0) continue;
+      if (cx - hexW > w || cy - hexH > h) continue;
+      const verts = [];
+      for (let k = 0; k < 6; k++) {
+        const ang = (Math.PI / 3) * k - Math.PI / 2; // pointy-top
+        verts.push([cx + Math.cos(ang) * size, cy + Math.sin(ang) * size]);
+      }
+      shapes.push({ kind: 'hex', cx, cy, size, verts });
+    }
+  }
+  return { shapes };
+}
+
+function paintHexfield(ctx, w, h, shapes, fillFn) {
+  for (let i = 0; i < shapes.length; i++) {
+    const v = shapes[i].verts;
+    ctx.fillStyle = fillFn(i);
+    ctx.beginPath();
+    ctx.moveTo(v[0][0], v[0][1]);
+    for (let k = 1; k < 6; k++) ctx.lineTo(v[k][0], v[k][1]);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function renderHexfield(ctx, w, h, colors, seed) {
+  autoRender(PATTERNS.find(p => p.id === 'HEXFIELD-6'), ctx, w, h, colors, seed);
+}
+
+/* --------------------------------------------------------------
+   DRAGONSCALE-V :: Cellular Mosaic (Voronoi) (paintable, NEW)
+   Brute-force nearest-seed at low resolution. The Voronoi cells
+   themselves are the paintable shapes; the cell-membership lookup
+   is rendered directly into the ID map at low res then upscaled.
+   -------------------------------------------------------------- */
+
+function computeDragonscale(seed, w, h) {
+  const rnd = mulberry32(seed);
+  const pxPerInch = w / 8.5;
+  // Aim for cells averaging ~0.65 inch diameter → ~120 seeds on 8.5x11.
+  const targetArea = (0.65 * pxPerInch) * (0.65 * pxPerInch) * Math.PI / 4;
+  const total = Math.max(60, Math.min(200, Math.round((w * h) / targetArea)));
+
+  const shapes = [];
+  // Place seeds via "blue-noise-ish" sampling: random with min-distance.
+  const minDist = Math.sqrt((w * h) / total) * 0.6;
+  let attempts = 0;
+  while (shapes.length < total && attempts < total * 30) {
+    attempts++;
+    const cx = rnd() * w;
+    const cy = rnd() * h;
+    let ok = true;
+    for (let i = 0; i < shapes.length; i++) {
+      const dx = cx - shapes[i].cx;
+      const dy = cy - shapes[i].cy;
+      if (dx * dx + dy * dy < minDist * minDist) { ok = false; break; }
+    }
+    if (ok) shapes.push({ kind: 'cell', cx, cy });
+  }
+  return { shapes };
+}
+
+// Voronoi paint is special — we render by nearest-seed lookup at low res
+// then upscale. Both the visible canvas and the ID canvas use this path.
+function paintDragonscale(ctx, w, h, shapes, fillFn) {
+  // Low-res working canvas, ~300px wide (preserves cell shape well at print).
+  const scale = Math.max(1, Math.floor(w / 300));
+  const ww = Math.ceil(w / scale);
+  const hh = Math.ceil(h / scale);
+  const off = document.createElement('canvas');
+  off.width = ww; off.height = hh;
+  const octx = off.getContext('2d');
+  const img = octx.createImageData(ww, hh);
+  const data = img.data;
+
+  // Precompute fill RGB per shape index (parse "rgb(r,g,b)" strings once).
+  const fillRgb = new Array(shapes.length);
+  for (let i = 0; i < shapes.length; i++) {
+    fillRgb[i] = parseRgb(fillFn(i));
+  }
+  // Scale seed positions to low-res coords.
+  const sx = new Float32Array(shapes.length);
+  const sy = new Float32Array(shapes.length);
+  for (let i = 0; i < shapes.length; i++) {
+    sx[i] = shapes[i].cx / scale;
+    sy[i] = shapes[i].cy / scale;
+  }
+
+  for (let j = 0; j < hh; j++) {
+    for (let i = 0; i < ww; i++) {
+      let best = 0, bestD = Infinity;
+      for (let k = 0; k < shapes.length; k++) {
+        const dx = i - sx[k];
+        const dy = j - sy[k];
+        const d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; best = k; }
+      }
+      const c = fillRgb[best];
+      const o = (j * ww + i) * 4;
+      data[o] = c[0]; data[o + 1] = c[1]; data[o + 2] = c[2]; data[o + 3] = 255;
+    }
+  }
+  octx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false; // crisp cell edges
+  ctx.drawImage(off, 0, 0, w, h);
+}
+
+function parseRgb(str) {
+  if (str[0] === '#') {
+    const [r, g, b] = hexToRgb(str);
+    return [r, g, b];
+  }
+  const m = str.match(/(\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+  return m ? [+m[1], +m[2], +m[3]] : [0, 0, 0];
+}
+
+function renderDragonscale(ctx, w, h, colors, seed) {
+  autoRender(PATTERNS.find(p => p.id === 'DRAGONSCALE-V'), ctx, w, h, colors, seed);
+}
+
+/* --------------------------------------------------------------
+   TERRAIN-X :: Topographic Field (auto-only)
+   -------------------------------------------------------------- */
+
 function renderTerrainX(ctx, w, h, colors, seed) {
-  // Render at downsampled resolution then upscale with smoothing for soft bands.
-  // Use ImageData for speed.
-  const scale = Math.max(1, Math.floor(w / 600)); // ~600 wide work canvas
+  const scale = Math.max(1, Math.floor(w / 600));
   const ww = Math.ceil(w / scale);
   const hh = Math.ceil(h / scale);
   const noise = makePerlin(seed);
   const img = ctx.createImageData(ww, hh);
   const data = img.data;
-
-  // Frequency: a few large bands across the sheet
-  const freq = 3 / ww; // ~3 cycles across width
+  const freq = 3 / ww;
   const rgbs = colors.map(hexToRgb);
 
   for (let j = 0; j < hh; j++) {
@@ -953,18 +1276,13 @@ function renderTerrainX(ctx, w, h, colors, seed) {
       else               idx = 3;
       const c = rgbs[idx];
       const o = (j * ww + i) * 4;
-      data[o]     = c[0];
-      data[o + 1] = c[1];
-      data[o + 2] = c[2];
-      data[o + 3] = 255;
+      data[o] = c[0]; data[o + 1] = c[1]; data[o + 2] = c[2]; data[o + 3] = 255;
     }
   }
-
-  // Paint at small res through an offscreen canvas, then drawImage scaled up
   const off = document.createElement('canvas');
   off.width = ww; off.height = hh;
   off.getContext('2d').putImageData(img, 0, 0);
-  ctx.imageSmoothingEnabled = false; // hard band edges
+  ctx.imageSmoothingEnabled = false;
   ctx.drawImage(off, 0, 0, w, h);
   embedEpicMark(ctx, w, h, colors, seed);
 }
@@ -1022,6 +1340,240 @@ function sortByLuminance(colors) {
 }
 
 /* ====================================================================
+   PAINT MODE — interactive canvas, ID lookup, palette, actions
+   ==================================================================== */
+
+let paintCanvas = null;          // visible canvas the student sees + clicks
+let paintCtx = null;
+let paintIdCtx = null;           // ctx for offscreen ID canvas
+let paintIdImageData = null;     // cached ImageData for fast hit-test
+
+const PAINT_W = 1275, PAINT_H = 1650;   // paint canvas matches old preview size
+
+function ensurePaintCanvas() {
+  const container = document.getElementById('paint-canvas-container');
+  if (paintCanvas) return paintCanvas;
+  container.innerHTML = '';
+  const cv = document.createElement('canvas');
+  cv.width = PAINT_W;
+  cv.height = PAINT_H;
+  container.appendChild(cv);
+  paintCanvas = cv;
+  paintCtx = cv.getContext('2d');
+  cv.addEventListener('pointerdown', onCanvasPointer);
+  return cv;
+}
+
+// Switch to a new pattern OR re-render with the current pattern.
+// `freshShapes` forces re-compute (e.g. after RECALIBRATE).
+function startPaintForPattern(freshShapes) {
+  const p = PATTERNS.find(x => x.id === state.pattern);
+  if (!p || !p.paintable) return;
+  ensurePaintCanvas();
+
+  if (freshShapes || !state.shapes) {
+    const { shapes } = p.compute(state.seed, PAINT_W, PAINT_H);
+    state.shapes = shapes;
+    state.shapeAssignments = new Int8Array(shapes.length).fill(-1);
+    state.history = [];
+    buildIdCanvas(p);
+  }
+
+  repaintAllShapes();
+  drawShapeNumbersOnUnpainted();
+  embedEpicMark(paintCtx, PAINT_W, PAINT_H, state.colors, state.seed);
+  state.rendered = true;
+  updatePaintCounter();
+  updateButtonStates();
+}
+
+function buildIdCanvas(p) {
+  const off = document.createElement('canvas');
+  off.width = PAINT_W;
+  off.height = PAINT_H;
+  paintIdCtx = off.getContext('2d');
+  // Black background = "no shape"
+  paintIdCtx.fillStyle = '#000000';
+  paintIdCtx.fillRect(0, 0, PAINT_W, PAINT_H);
+  // Paint each shape filled with its id-encoded color (no antialiasing
+  // tricks — we'll multi-sample on hit-test to absorb edge blending).
+  p.paint(paintIdCtx, PAINT_W, PAINT_H, state.shapes, idx => encodeIdRgb(idx));
+  paintIdImageData = paintIdCtx.getImageData(0, 0, PAINT_W, PAINT_H);
+}
+
+function repaintAllShapes() {
+  const p = PATTERNS.find(x => x.id === state.pattern);
+  paintCtx.clearRect(0, 0, PAINT_W, PAINT_H);
+  p.paint(paintCtx, PAINT_W, PAINT_H, state.shapes, idx => {
+    const a = state.shapeAssignments[idx];
+    return (a >= 0 && a < 4) ? state.colors[a] : unpaintedFill(idx);
+  });
+}
+
+function drawShapeNumbersOnUnpainted() {
+  // Tiny numbers at each shape's centroid to help students orient.
+  paintCtx.save();
+  paintCtx.font = 'bold 11px "Share Tech Mono", monospace';
+  paintCtx.textAlign = 'center';
+  paintCtx.textBaseline = 'middle';
+  for (let i = 0; i < state.shapes.length; i++) {
+    if (state.shapeAssignments[i] !== -1) continue;
+    const s = state.shapes[i];
+    if (s.kind === 'bg') continue; // background doesn't get a number
+    paintCtx.fillStyle = 'rgba(255,255,255,0.55)';
+    paintCtx.fillText(String(i), s.cx, s.cy);
+  }
+  paintCtx.restore();
+}
+
+function onCanvasPointer(e) {
+  if (!paintIdImageData || state.activeColorIdx < 0) return;
+  const rect = paintCanvas.getBoundingClientRect();
+  const x = ((e.clientX - rect.left) / rect.width)  * PAINT_W;
+  const y = ((e.clientY - rect.top)  / rect.height) * PAINT_H;
+  const idx = shapeIdAtCanvas(x, y);
+  if (idx < 0 || idx >= state.shapes.length) return;
+  const prev = state.shapeAssignments[idx];
+  if (prev === state.activeColorIdx) return;
+  state.history.push({ idx, prev });
+  if (state.history.length > 500) state.history.shift();
+  state.shapeAssignments[idx] = state.activeColorIdx;
+  // Full repaint keeps things simple; <100ms at preview res.
+  repaintAllShapes();
+  embedEpicMark(paintCtx, PAINT_W, PAINT_H, state.colors, state.seed);
+  updatePaintCounter();
+  updateButtonStates();
+}
+
+// Multi-sample a small window around (x,y) to be robust against edge
+// antialiasing in the ID canvas. Returns the most-common shape index.
+function shapeIdAtCanvas(x, y) {
+  if (!paintIdImageData) return -1;
+  const W = paintIdImageData.width;
+  const H = paintIdImageData.height;
+  const cx = Math.max(0, Math.min(W - 1, Math.round(x)));
+  const cy = Math.max(0, Math.min(H - 1, Math.round(y)));
+  const counts = new Map();
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const px = Math.max(0, Math.min(W - 1, cx + dx));
+      const py = Math.max(0, Math.min(H - 1, cy + dy));
+      const o = (py * W + px) * 4;
+      const id = decodeIdRgb(
+        paintIdImageData.data[o],
+        paintIdImageData.data[o + 1],
+        paintIdImageData.data[o + 2]
+      );
+      if (id >= 0) counts.set(id, (counts.get(id) || 0) + 1);
+    }
+  }
+  let best = -1, bestN = 0;
+  for (const [id, n] of counts) {
+    if (n > bestN) { best = id; bestN = n; }
+  }
+  return best;
+}
+
+function updatePaintCounter() {
+  const el = document.getElementById('paint-counter');
+  if (!el || !state.shapeAssignments) return;
+  let painted = 0;
+  for (let i = 0; i < state.shapeAssignments.length; i++) {
+    if (state.shapeAssignments[i] !== -1) painted++;
+  }
+  const total = state.shapeAssignments.length;
+  el.textContent = `PAINTED :: ${painted} / ${total}`;
+}
+
+function buildPaletteSwatches() {
+  const wrap = document.getElementById('palette-swatches');
+  wrap.innerHTML = '';
+  for (let i = 0; i < 4; i++) {
+    const sw = document.createElement('div');
+    sw.className = 'palette-swatch' + (i === state.activeColorIdx ? ' active' : '');
+    sw.dataset.idx = i;
+    sw.textContent = `CH-${i + 1}`;
+    sw.addEventListener('click', () => setActiveColor(i));
+    wrap.appendChild(sw);
+  }
+  refreshPaletteSwatches();
+}
+
+function refreshPaletteSwatches() {
+  const swatches = document.querySelectorAll('.palette-swatch');
+  swatches.forEach(sw => {
+    const i = +sw.dataset.idx;
+    const c = state.colors[i];
+    sw.style.background = c || '#111';
+    sw.style.color = c ? readableTextOver(c) : 'rgba(180,180,180,0.5)';
+    sw.classList.toggle('active', i === state.activeColorIdx);
+  });
+}
+
+function readableTextOver(hex) {
+  return luminance(hex) > 130 ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.75)';
+}
+
+function setActiveColor(i) {
+  if (i < 0 || i > 3) return;
+  state.activeColorIdx = i;
+  refreshPaletteSwatches();
+}
+
+// Action buttons
+function paintActionFillAll() {
+  if (!state.shapes) return;
+  // Push every changing shape to history as a batch
+  for (let i = 0; i < state.shapeAssignments.length; i++) {
+    if (state.shapeAssignments[i] !== state.activeColorIdx) {
+      state.history.push({ idx: i, prev: state.shapeAssignments[i] });
+      state.shapeAssignments[i] = state.activeColorIdx;
+    }
+  }
+  if (state.history.length > 5000) state.history.splice(0, state.history.length - 5000);
+  repaintAllShapes();
+  embedEpicMark(paintCtx, PAINT_W, PAINT_H, state.colors, state.seed);
+  updatePaintCounter();
+  updateButtonStates();
+}
+
+function paintActionUndo() {
+  if (!state.shapes || !state.history.length) return;
+  const last = state.history.pop();
+  state.shapeAssignments[last.idx] = last.prev;
+  repaintAllShapes();
+  drawShapeNumbersOnUnpainted();
+  embedEpicMark(paintCtx, PAINT_W, PAINT_H, state.colors, state.seed);
+  updatePaintCounter();
+  updateButtonStates();
+}
+
+function paintActionReset() {
+  if (!state.shapes) return;
+  state.history = [];
+  state.shapeAssignments.fill(-1);
+  repaintAllShapes();
+  drawShapeNumbersOnUnpainted();
+  embedEpicMark(paintCtx, PAINT_W, PAINT_H, state.colors, state.seed);
+  updatePaintCounter();
+  updateButtonStates();
+}
+
+function paintActionRandomize() {
+  if (!state.shapes) return;
+  const rnd = mulberry32((Math.random() * 1e9) | 0);
+  for (let i = 0; i < state.shapeAssignments.length; i++) {
+    state.history.push({ idx: i, prev: state.shapeAssignments[i] });
+    state.shapeAssignments[i] = Math.floor(rnd() * 4);
+  }
+  if (state.history.length > 5000) state.history.splice(0, state.history.length - 5000);
+  repaintAllShapes();
+  embedEpicMark(paintCtx, PAINT_W, PAINT_H, state.colors, state.seed);
+  updatePaintCounter();
+  updateButtonStates();
+}
+
+/* ====================================================================
    BUILD UI
    ==================================================================== */
 
@@ -1050,7 +1602,13 @@ function buildHexInputs() {
 function buildPatternCards() {
   const grid = document.getElementById('pattern-grid');
   grid.innerHTML = '';
-  PATTERNS.forEach(p => {
+  // In paint mode, only show paintable patterns. In auto mode, show all 6.
+  const visible = PATTERNS.filter(p => state.mode === 'auto' ? true : p.paintable);
+  // If the currently-selected pattern isn't in the visible set, pick the first.
+  if (!visible.find(p => p.id === state.pattern)) {
+    state.pattern = visible[0].id;
+  }
+  visible.forEach(p => {
     const card = document.createElement('div');
     card.className = 'pattern-card' + (p.id === state.pattern ? ' selected' : '');
     card.dataset.pattern = p.id;
@@ -1058,14 +1616,21 @@ function buildPatternCards() {
       <canvas data-thumb="${p.id}" width="120" height="155"></canvas>
       <div class="pattern-name">${p.label}</div>
     `;
-    card.addEventListener('click', () => {
-      state.pattern = p.id;
-      document.querySelectorAll('.pattern-card').forEach(c =>
-        c.classList.toggle('selected', c.dataset.pattern === p.id));
-      updateButtonStates();
-    });
+    card.addEventListener('click', () => onPatternCardClick(p));
     grid.appendChild(card);
   });
+}
+
+function onPatternCardClick(p) {
+  state.pattern = p.id;
+  document.querySelectorAll('.pattern-card').forEach(c =>
+    c.classList.toggle('selected', c.dataset.pattern === p.id));
+  // Switching patterns in paint mode resets the in-progress canvas.
+  if (state.mode === 'paint' && allColorsValid()) {
+    state.seed = (Math.random() * 1e9) | 0;
+    startPaintForPattern(true);
+  }
+  updateButtonStates();
 }
 
 function renderThumbnails() {
@@ -1104,6 +1669,13 @@ function onHexInput(i) {
     sw.style.boxShadow = 'none';
   }
   renderThumbnails();
+  refreshPaletteSwatches();
+  // In paint mode, recolor any already-painted shapes with the new palette.
+  if (state.mode === 'paint' && state.shapes && allColorsValid()) {
+    repaintAllShapes();
+    drawShapeNumbersOnUnpainted();
+    embedEpicMark(paintCtx, PAINT_W, PAINT_H, state.colors, state.seed);
+  }
   updateButtonStates();
 }
 
@@ -1117,10 +1689,23 @@ function callsignValid() {
 
 function updateButtonStates() {
   const ready = callsignValid() && allColorsValid();
-  document.getElementById('btn-execute').disabled = !ready;
-  document.getElementById('btn-recalibrate').disabled = !state.rendered;
+  // Auto-mode buttons (may not exist when paint mode is the only visible block)
+  const btnExecute = document.getElementById('btn-execute');
+  const btnRecalibrate = document.getElementById('btn-recalibrate');
+  if (btnExecute) btnExecute.disabled = !ready;
+  if (btnRecalibrate) btnRecalibrate.disabled = !state.rendered;
+  // Paint-mode action buttons
+  const paintReady = state.mode === 'paint' && state.shapes !== null;
+  const btnFillAll   = document.getElementById('btn-fill-all');
+  const btnUndo      = document.getElementById('btn-undo');
+  const btnReset     = document.getElementById('btn-reset');
+  const btnRandomize = document.getElementById('btn-randomize');
+  if (btnFillAll)   btnFillAll.disabled   = !paintReady;
+  if (btnReset)     btnReset.disabled     = !paintReady;
+  if (btnRandomize) btnRandomize.disabled = !paintReady;
+  if (btnUndo)      btnUndo.disabled      = !paintReady || state.history.length === 0;
+  // Transmit + download enabled when something has been rendered.
   document.getElementById('btn-download').disabled = !state.rendered;
-  // Transmit button depends on render + config + auth-ready
   document.getElementById('btn-transmit').disabled = !state.rendered || !channelOnline();
 }
 
@@ -1155,7 +1740,21 @@ function renderPrintCanvas() {
   cv.height = PRINT_H;
   const ctx = cv.getContext('2d');
   const p = PATTERNS.find(x => x.id === state.pattern);
-  p.render(ctx, PRINT_W, PRINT_H, state.colors, state.seed);
+
+  if (state.mode === 'paint' && p.paintable && state.shapes) {
+    // Recompute geometry at print resolution using the SAME seed so shape
+    // count and ordering match, then apply the student's painted
+    // assignments. Any still-unpainted shapes default to palette color 0.
+    const { shapes: printShapes } = p.compute(state.seed, PRINT_W, PRINT_H);
+    const assigns = state.shapeAssignments;
+    p.paint(ctx, PRINT_W, PRINT_H, printShapes, idx => {
+      const a = (idx < assigns.length) ? assigns[idx] : 0;
+      return state.colors[(a >= 0 && a < 4) ? a : 0];
+    });
+    embedEpicMark(ctx, PRINT_W, PRINT_H, state.colors, state.seed);
+  } else {
+    p.render(ctx, PRINT_W, PRINT_H, state.colors, state.seed);
+  }
   return cv;
 }
 
@@ -1362,29 +1961,67 @@ window.addEventListener('DOMContentLoaded', () => {
   buildHexInputs();
   buildPatternCards();
   renderThumbnails();
+  buildPaletteSwatches();
 
-  // Callsign
+  // Callsign — with OVERRIDE / AUTOFIELD prefix trigger
   const cs = document.getElementById('callsign');
   cs.addEventListener('input', () => {
-    state.callsign = cs.value;
+    const raw = cs.value;
+    const m = raw.match(/^\s*(OVERRIDE|AUTOFIELD)\b\s*(.*)$/i);
+    if (m) {
+      // Strip the codeword; flip into auto mode.
+      cs.value = m[2];
+      state.callsign = cs.value;
+      enterAutoMode();
+    } else {
+      state.callsign = raw;
+    }
     updateButtonStates();
   });
 
-  // Actions
-  document.getElementById('btn-execute').addEventListener('click', () => {
-    state.seed = (Math.random() * 1e9) | 0;
-    renderPreview();
-    renderThumbnails();
-    setStatus('// PATTERN RENDERED. READY FOR TRANSMISSION.', false);
-  });
-  document.getElementById('btn-recalibrate').addEventListener('click', () => {
-    state.seed = (Math.random() * 1e9) | 0;
-    renderPreview();
-    renderThumbnails();
-    setStatus('// NEW SEED LOCKED. PATTERN RECALIBRATED.', false);
-  });
+  // Auto-mode action buttons (only present when auto-mode-only block exists)
+  const btnExec = document.getElementById('btn-execute');
+  if (btnExec) {
+    btnExec.addEventListener('click', () => {
+      state.seed = (Math.random() * 1e9) | 0;
+      renderPreview();
+      renderThumbnails();
+      setStatus('// PATTERN RENDERED. READY FOR TRANSMISSION.', false);
+    });
+  }
+  const btnRecal = document.getElementById('btn-recalibrate');
+  if (btnRecal) {
+    btnRecal.addEventListener('click', () => {
+      state.seed = (Math.random() * 1e9) | 0;
+      renderPreview();
+      renderThumbnails();
+      setStatus('// NEW SEED LOCKED. PATTERN RECALIBRATED.', false);
+    });
+  }
+
   document.getElementById('btn-download').addEventListener('click', downloadLocal);
   document.getElementById('btn-transmit').addEventListener('click', transmit);
+
+  // Paint-mode action buttons
+  document.getElementById('btn-fill-all').addEventListener('click', paintActionFillAll);
+  document.getElementById('btn-undo').addEventListener('click', paintActionUndo);
+  document.getElementById('btn-reset').addEventListener('click', paintActionReset);
+  document.getElementById('btn-randomize').addEventListener('click', paintActionRandomize);
+
+  // Keyboard shortcuts: 1-4 switch active palette color
+  window.addEventListener('keydown', (e) => {
+    if (state.mode !== 'paint') return;
+    // Ignore if user is typing in an input
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+    if (e.key >= '1' && e.key <= '4') {
+      setActiveColor(parseInt(e.key, 10) - 1);
+      e.preventDefault();
+    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+      paintActionUndo();
+      e.preventDefault();
+    }
+  });
 
   document.getElementById('btn-epic-palette').addEventListener('click', () => {
     for (let i = 0; i < 4; i++) {
@@ -1392,12 +2029,17 @@ window.addEventListener('DOMContentLoaded', () => {
       inp.value = EPIC_PALETTE[i];
       onHexInput(i);
     }
-    // Auto-fill callsign if blank so EXECUTE activates in one click.
-    const cs = document.getElementById('callsign');
+    // Auto-fill callsign if blank so paint mode starts in one click.
     if (!cs.value.trim()) {
       cs.value = 'OPERATIVE_TEST';
       state.callsign = cs.value;
       updateButtonStates();
+    }
+    // Kick off paint canvas immediately so students can start clicking.
+    if (state.mode === 'paint' && allColorsValid()) {
+      state.seed = (Math.random() * 1e9) | 0;
+      startPaintForPattern(true);
+      setStatus('// FIELD KIT READY. PICK A COLOR AND TAP A SHAPE.', false);
     }
   });
 
@@ -1407,6 +2049,20 @@ window.addEventListener('DOMContentLoaded', () => {
   // Boot animation
   runBoot();
 });
+
+function enterAutoMode() {
+  state.mode = 'auto';
+  document.body.classList.add('auto-mode');
+  // Rebuild pattern cards to include MARPAT-D + TERRAIN-X.
+  buildPatternCards();
+  renderThumbnails();
+  // Update Step 03 label.
+  const lbl = document.getElementById('step03-label');
+  if (lbl) lbl.textContent = '[ STEP 03 ] :: AUTO-FIELD GENERATION';
+  setStatus('// OVERRIDE :: AUTO-FIELD MODE ENGAGED. EXECUTE TO GENERATE.', false);
+  state.rendered = false;
+  updateButtonStates();
+}
 </script>
 
 </body>
