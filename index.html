@@ -721,7 +721,6 @@ body:not(.auto-mode) .paint-mode-only { display: block; }
           <button class="term term-small" id="btn-fill-all" disabled>FILL ALL</button>
           <button class="term term-small" id="btn-undo" disabled>UNDO</button>
           <button class="term term-small" id="btn-reset" disabled>RESET</button>
-          <button class="term term-small amber" id="btn-randomize" disabled>RANDOMIZE</button>
         </div>
         <div class="palette-hint">
           // KEYS 1-4 SWITCH ACTIVE COLOR<br>
@@ -980,15 +979,15 @@ function autoRender(p, ctx, w, h, colors, seed) {
    -------------------------------------------------------------- */
 
 function renderMarpat(ctx, w, h, colors, seed) {
-  // ~30% more cells than the original 80x100 grid (sqrt(1.3) scaling).
-  const cellsX = 91;
-  const cellsY = 114;
+  // ~70% more cells than the original 80x100 grid (two 30% bumps).
+  const cellsX = 104;
+  const cellsY = 130;
   const cellW = w / cellsX;
   const cellH = h / cellsY;
   const noise = makePerlin(seed);
   const noise2 = makePerlin(seed ^ 0xA5A5A5);
   // freq scaled proportionally to keep cluster size visually consistent.
-  const freq = 0.079;
+  const freq = 0.069;
 
   ctx.imageSmoothingEnabled = false;
   for (let j = 0; j < cellsY; j++) {
@@ -1016,8 +1015,8 @@ function renderMarpat(ctx, w, h, colors, seed) {
 function computeWoodland(seed, w, h) {
   const rnd = mulberry32(seed);
   const pxPerInch = w / 8.5;
-  // 30% more blobs than the original 80-150 range.
-  const total = Math.floor(104 + rnd() * 92);
+  // ~70% more blobs than the original 80-150 range.
+  const total = Math.floor(135 + rnd() * 120);
   const shapes = [{ kind: 'bg', w, h, cx: w / 2, cy: h / 2 }]; // shape #0 = background
 
   for (let k = 0; k < total; k++) {
@@ -1075,8 +1074,8 @@ function renderWoodland(ctx, w, h, colors, seed) {
 function computeFractalG(seed, w, h) {
   const rnd = mulberry32(seed);
   const pxPerInch = w / 8.5;
-  // Cell size shrunk so ~30% more quads (each → 2 triangles).
-  const cellSize = 0.877 * pxPerInch;
+  // Cell size shrunk so ~70% more quads than original (each → 2 triangles).
+  const cellSize = 0.769 * pxPerInch;
   const cols = Math.ceil(w / cellSize) + 1;
   const rows = Math.ceil(h / cellSize) + 1;
 
@@ -1139,8 +1138,8 @@ function renderFractalG(ctx, w, h, colors, seed) {
 
 function computeHexfield(seed, w, h) {
   const pxPerInch = w / 8.5;
-  // Hex "size" shrunk so we get ~30% more hexes (~195 total).
-  const size = 0.482 * pxPerInch;
+  // Hex "size" shrunk for ~70% more hexes than the original (~255 total).
+  const size = 0.423 * pxPerInch;
   const hexW = Math.sqrt(3) * size;       // horizontal spacing
   const hexH = 1.5 * size;                // vertical spacing (3/4 of hex height)
 
@@ -1196,9 +1195,9 @@ function renderHexfield(ctx, w, h, colors, seed) {
 function computeDragonscale(seed, w, h) {
   const rnd = mulberry32(seed);
   const pxPerInch = w / 8.5;
-  // Cells shrunk to ~0.57 inch diameter → ~30% more (~156 seeds).
-  const targetArea = (0.57 * pxPerInch) * (0.57 * pxPerInch) * Math.PI / 4;
-  const total = Math.max(80, Math.min(260, Math.round((w * h) / targetArea)));
+  // Cells shrunk to ~0.50 inch diameter → ~70% more cells than original.
+  const targetArea = (0.50 * pxPerInch) * (0.50 * pxPerInch) * Math.PI / 4;
+  const total = Math.max(100, Math.min(340, Math.round((w * h) / targetArea)));
 
   const shapes = [];
   // Place seeds via "blue-noise-ish" sampling: random with min-distance.
@@ -1702,19 +1701,6 @@ function paintActionReset() {
   updateButtonStates();
 }
 
-function paintActionRandomize() {
-  if (!state.shapes) return;
-  const rnd = mulberry32((Math.random() * 1e9) | 0);
-  for (let i = 0; i < state.shapeAssignments.length; i++) {
-    state.history.push({ idx: i, prev: state.shapeAssignments[i] });
-    state.shapeAssignments[i] = Math.floor(rnd() * 4);
-  }
-  if (state.history.length > 5000) state.history.splice(0, state.history.length - 5000);
-  repaintAllShapes();
-  updatePaintCounter();
-  updateButtonStates();
-}
-
 /* ====================================================================
    BUILD UI
    ==================================================================== */
@@ -1837,14 +1823,12 @@ function updateButtonStates() {
   if (btnRecalibrate) btnRecalibrate.disabled = !state.rendered;
   // Paint-mode action buttons
   const paintReady = state.mode === 'paint' && state.shapes !== null;
-  const btnFillAll   = document.getElementById('btn-fill-all');
-  const btnUndo      = document.getElementById('btn-undo');
-  const btnReset     = document.getElementById('btn-reset');
-  const btnRandomize = document.getElementById('btn-randomize');
-  if (btnFillAll)   btnFillAll.disabled   = !paintReady;
-  if (btnReset)     btnReset.disabled     = !paintReady;
-  if (btnRandomize) btnRandomize.disabled = !paintReady;
-  if (btnUndo)      btnUndo.disabled      = !paintReady || state.history.length === 0;
+  const btnFillAll = document.getElementById('btn-fill-all');
+  const btnUndo    = document.getElementById('btn-undo');
+  const btnReset   = document.getElementById('btn-reset');
+  if (btnFillAll) btnFillAll.disabled = !paintReady;
+  if (btnReset)   btnReset.disabled   = !paintReady;
+  if (btnUndo)    btnUndo.disabled    = !paintReady || state.history.length === 0;
   // Transmit + download enabled when something has been rendered.
   document.getElementById('btn-download').disabled = !state.rendered;
   document.getElementById('btn-transmit').disabled = !state.rendered || !channelOnline();
@@ -2163,7 +2147,6 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-fill-all').addEventListener('click', paintActionFillAll);
   document.getElementById('btn-undo').addEventListener('click', paintActionUndo);
   document.getElementById('btn-reset').addEventListener('click', paintActionReset);
-  document.getElementById('btn-randomize').addEventListener('click', paintActionRandomize);
 
 
   // Keyboard shortcuts: 1-4 switch active palette color

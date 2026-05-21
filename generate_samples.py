@@ -178,13 +178,13 @@ def embed_epic_mark(img, w, h, palette_rgb, seed):
 def render_marpat(seed):
     img = Image.new('RGB', (W, H))
     pixels = img.load()
-    # ~30% more cells than the original 80x100 grid.
-    cells_x, cells_y = 91, 114
+    # ~70% more cells than the original 80x100 grid.
+    cells_x, cells_y = 104, 130
     cell_w = W / cells_x
     cell_h = H / cells_y
     n1 = make_perlin(seed)
     n2 = make_perlin(seed ^ 0xA5A5A5)
-    freq = 0.079
+    freq = 0.069
     rgb = [hex_to_rgb(c) for c in PALETTE]
 
     # Precompute cell colors then paint.
@@ -219,8 +219,8 @@ def render_woodland(seed):
     img = Image.new('RGB', (W, H), ordered[0])
     draw = ImageDraw.Draw(img)
     rnd = mulberry32(seed)
-    # 30% more blobs than original 80-150.
-    total = 104 + int(rnd() * 92)
+    # ~70% more blobs than original 80-150.
+    total = 135 + int(rnd() * 120)
     third = total // 3
     buckets = [third, third, total - 2 * third]
     px_per_inch = PX_PER_INCH
@@ -269,8 +269,8 @@ def render_fractalg(seed):
     img = Image.new('RGB', (W, H), rgbs[0])
     draw = ImageDraw.Draw(img)
     rnd = mulberry32(seed)
-    # Cell shrunk so ~30% more quads (each → 2 triangles).
-    cell = 0.877 * PX_PER_INCH
+    # Cell shrunk so ~70% more quads (each → 2 triangles).
+    cell = 0.769 * PX_PER_INCH
     cols = math.ceil(W / cell) + 1
     rows = math.ceil(H / cell) + 1
 
@@ -322,8 +322,8 @@ def render_hexfield(seed):
     img = Image.new('RGB', (W, H), rgbs[0])
     draw = ImageDraw.Draw(img)
     rnd = mulberry32(seed)
-    # Hex "size" shrunk so we get ~30% more hexes.
-    size = 0.482 * PX_PER_INCH
+    # Hex "size" shrunk so we get ~70% more hexes than original.
+    size = 0.423 * PX_PER_INCH
     hex_w = math.sqrt(3) * size
     hex_h = 1.5 * size
     cols = math.ceil(W / hex_w) + 2
@@ -352,9 +352,9 @@ def render_hexfield(seed):
 def render_dragonscale(seed):
     rgbs = [hex_to_rgb(c) for c in PALETTE]
     rnd = mulberry32(seed)
-    # Cells shrunk to ~0.57 inch diameter → ~30% more.
-    target_area = (0.57 * PX_PER_INCH) ** 2 * math.pi / 4
-    total = max(80, min(260, round((W * H) / target_area)))
+    # Cells shrunk to ~0.50 inch diameter → ~70% more than original.
+    target_area = (0.50 * PX_PER_INCH) ** 2 * math.pi / 4
+    total = max(100, min(340, round((W * H) / target_area)))
     min_dist = math.sqrt((W * H) / total) * 0.6
     seeds = []
     attempts = 0
