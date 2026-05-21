@@ -909,7 +909,7 @@ function sanitizeCallsign(name) {
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
-    .slice(0, 24) || 'CADET';
+    .slice(0, 48) || 'CADET';
 }
 
 function ts() {
@@ -1888,7 +1888,41 @@ function renderPrintCanvas() {
   } else {
     p.render(ctx, PRINT_W, PRINT_H, state.colors, state.seed);
   }
+  // Stamp the operative callsign in the bottom-right corner so the
+  // instructor can ID prints in a stack.
+  drawCallsignLabel(ctx, PRINT_W, PRINT_H, state.callsign);
   return cv;
+}
+
+// Draws "OPERATIVE :: <callsign>" on a white plate in the bottom-right
+// corner of `ctx`. Scaled by canvas height so it works for both the
+// 2550x3300 print canvas and (if ever called) the preview canvas.
+function drawCallsignLabel(ctx, w, h, rawCallsign) {
+  const text = `OPERATIVE :: ${(rawCallsign || 'CADET').trim().toUpperCase()}`;
+  const fontSize = Math.round(h * 0.014);          // ~46 px at print res (~0.15")
+  const padX = Math.round(w * 0.014);              // distance from right edge
+  const padY = Math.round(h * 0.012);              // distance from bottom edge
+  const padInside = Math.round(fontSize * 0.6);
+
+  ctx.save();
+  ctx.font = `bold ${fontSize}px "Courier New", "Share Tech Mono", monospace`;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  const metrics = ctx.measureText(text);
+  const textW = Math.ceil(metrics.width);
+  const plateW = textW + padInside * 2;
+  const plateH = Math.round(fontSize * 1.8);
+  const plateX = w - padX - plateW;
+  const plateY = h - padY - plateH;
+  // White plate with a thin black border for crisp readability over any camo
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(plateX, plateY, plateW, plateH);
+  ctx.lineWidth = Math.max(1, Math.round(fontSize * 0.06));
+  ctx.strokeStyle = '#000000';
+  ctx.strokeRect(plateX, plateY, plateW, plateH);
+  ctx.fillStyle = '#000000';
+  ctx.fillText(text, plateX + padInside, plateY + plateH / 2);
+  ctx.restore();
 }
 
 /* ====================================================================
