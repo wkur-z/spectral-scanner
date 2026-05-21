@@ -91,13 +91,28 @@ stamped on it (mountain icon + "EPIC CAMPUS" wordmark + "EXPLORATIVE
 PATHWAYS FOR INNOVATIVE CAREERS" tagline). When students take their
 sticker-decorated planes home, the EPIC branding goes with them.
 
-### Auto-field (OVERRIDE) mode — for short classes
+### Hidden motif templates
 
-If the class is running short on time, type **`OVERRIDE`** or
-**`AUTOFIELD`** as a prefix in the callsign field (followed by the
-student's name), e.g. `OVERRIDE JANE DOE :: BEARCAT`. The codeword
-gets stripped automatically. The Step 03 section flips to the older
-one-click auto-generation flow:
+A `▓ HIDDEN MOTIFS ▓` section in the palette panel has three buttons
+that pre-paint the canvas into recognizable shapes using the student's
+own colors:
+
+- **▶ SMILEY :)** — circular face, eyes, and a U-shaped smile
+- **▶ SNOWY PEAKS** — three mountain peaks with snow caps and sky
+- **▶ EPIC BADGE** — mimics the EPIC mountain logo across the whole sheet
+
+The motif uses each student's 4 colors mapped by brightness (lightest →
+darkest), so it always reads correctly regardless of which colors they
+picked. They can keep painting on top of the motif or hit RESET to
+start fresh.
+
+### Auto-field (AUTOBOTS ROLL OUT) mode — for short classes
+
+If the class is running short on time, type **`AUTOBOTS ROLL OUT`** at
+the start of the callsign field (followed by the student's name), e.g.
+`AUTOBOTS ROLL OUT JANE DOE :: BEARCAT`. The codephrase gets stripped
+automatically. The Step 03 section flips to the older one-click
+auto-generation flow:
 
 - Two additional patterns appear (`MARPAT-D` digital camo and
   `TERRAIN-X` topographic) that aren't paintable.

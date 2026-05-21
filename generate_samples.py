@@ -103,32 +103,71 @@ def luminance(rgb):
 
 
 # ====================================================================
-# EPIC CAMPUS LOGO STAMP
-# Scatters 4 copies of the official circular EPIC Campus logo (with
-# text ring) across each camo, one per quadrant. Drawn in full
-# original brand colors. Mirrors the JS implementation in index.html.
+# EPIC CAMPUS LOGO — procedural vector regions
+# Mirrors the JS implementation: 4 polygon regions per logo (disc bg,
+# orange peaks, navy mountain, green river), 4 logos per camo, mapped
+# to the student palette by luminance rank.
 # ====================================================================
 
-EPIC_LOGO_PATH = os.path.join(os.path.dirname(__file__), 'assets', 'epic-logo-full.png')
+
+def _epic_logo_regions():
+    # Disc background (28-point circle approximation)
+    circle = []
+    N = 28
+    for i in range(N):
+        a = (i / N) * math.tau - math.pi / 2
+        circle.append((0.5 + 0.48 * math.cos(a), 0.5 + 0.48 * math.sin(a)))
+    # Orange sun — top half of disc as a semicircle.
+    sun = []
+    Ns = 16
+    for i in range(Ns + 1):
+        a = -math.pi + (i / Ns) * math.pi
+        sun.append((0.5 + 0.46 * math.cos(a), 0.5 + 0.46 * math.sin(a)))
+    sun.append((0.96, 0.50))
+    sun.append((0.04, 0.50))
+    return [
+        ('disc', 0, circle),
+        ('peaks', 1, sun),
+        ('mountain', 3, [
+            (0.08, 0.82), (0.22, 0.76), (0.32, 0.28), (0.45, 0.60),
+            (0.55, 0.28), (0.72, 0.60), (0.82, 0.76), (0.92, 0.82)
+        ]),
+        ('river', 2, [
+            (0.08, 0.92), (0.30, 0.82), (0.52, 0.80), (0.74, 0.84), (0.92, 0.92),
+            (0.74, 0.94), (0.50, 0.86), (0.30, 0.94)
+        ])
+    ]
+
+
+_EPIC_REGIONS = _epic_logo_regions()
+
+
+def _palette_luminance_ranks(palette_rgb):
+    """Return list of palette indices, brightest-first."""
+    return [
+        i for i, _ in sorted(
+            enumerate(palette_rgb),
+            key=lambda kv: -(0.2126 * kv[1][0] + 0.7152 * kv[1][1] + 0.0722 * kv[1][2])
+        )
+    ]
 
 
 def embed_epic_mark(img, w, h, palette_rgb, seed):
-    if not os.path.exists(EPIC_LOGO_PATH):
-        return img
     rnd = mulberry32((seed ^ 0xE91CCA) & 0xFFFFFFFF)
+    ranks = _palette_luminance_ranks(palette_rgb)
     px_per_inch = w / 8.5
-    icon_size = int(1.5 * px_per_inch)
-    logo = Image.open(EPIC_LOGO_PATH).convert('RGBA').resize(
-        (icon_size, icon_size), Image.LANCZOS
-    )
+    icon_size = 1.5 * px_per_inch
+    draw = ImageDraw.Draw(img)
 
-    # 4 placements, one per quadrant; middle 60% of each quadrant.
     for q in range(4):
         qx = q % 2
         qy = q // 2
-        x = int((qx * 0.5 + 0.10 + rnd() * 0.30) * w - icon_size / 2)
-        y = int((qy * 0.5 + 0.10 + rnd() * 0.30) * h - icon_size / 2)
-        img.paste(logo, (x, y), logo)
+        cx = (qx * 0.5 + 0.10 + rnd() * 0.30) * w
+        cy = (qy * 0.5 + 0.10 + rnd() * 0.30) * h
+        for name, default_rank, points in _EPIC_REGIONS:
+            verts = [(cx + (nx - 0.5) * icon_size, cy + (ny - 0.5) * icon_size)
+                     for nx, ny in points]
+            draw.polygon(verts, fill=palette_rgb[ranks[default_rank]])
     return img
 
 
