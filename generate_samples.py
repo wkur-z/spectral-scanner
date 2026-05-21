@@ -102,60 +102,13 @@ def luminance(rgb):
 
 
 # ====================================================================
-# EPIC CAMPUS ICON STAMP
-# Scatters 4 recolored copies of the circular EPIC icon across each
-# camo, one per quadrant. Each copy is recolored to the student
-# palette by nearest-color match against the source logo regions.
-# Mirrors the JS implementation in index.html.
+# EPIC CAMPUS LOGO STAMP
+# Scatters 4 copies of the official circular EPIC Campus logo (with
+# text ring) across each camo, one per quadrant. Drawn in full
+# original brand colors. Mirrors the JS implementation in index.html.
 # ====================================================================
 
-import numpy as np
-
-EPIC_LOGO_PATH = os.path.join(os.path.dirname(__file__), 'assets', 'epic-logo.png')
-
-# Source logo region colors (brightest → darkest):
-# [white background, orange peaks, green river, navy mountain]
-LOGO_REGION_RGB = np.array([
-    [255, 255, 255],
-    [232, 119,  34],
-    [ 62, 157,  67],
-    [ 27,  61,  94],
-], dtype=np.int32)
-
-
-def _recolor_icon(palette_rgb):
-    icon = Image.open(EPIC_LOGO_PATH).convert('RGBA')
-    arr = np.array(icon)
-    rgb = arr[..., :3].astype(np.int32)
-    alpha = arr[..., 3]
-    h, w = rgb.shape[:2]
-    flat = rgb.reshape(-1, 3)
-
-    # Sort student colors brightest → darkest so they align rank-by-rank
-    # with LOGO_REGION_RGB.
-    sorted_student = sorted(
-        palette_rgb,
-        key=lambda c: -(0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2])
-    )
-
-    # For each pixel, find which logo region color it's closest to.
-    diffs = flat[:, None, :] - LOGO_REGION_RGB[None, :, :]
-    dists = (diffs * diffs).sum(axis=2)
-    nearest = dists.argmin(axis=1)
-
-    new_rgb = np.zeros_like(flat)
-    for k in range(4):
-        mask = nearest == k
-        new_rgb[mask] = sorted_student[k]
-
-    out = np.zeros_like(arr)
-    out[..., :3] = new_rgb.reshape(h, w, 3)
-    out[..., 3] = alpha
-    # Zero RGB where fully transparent
-    transparent = alpha < 16
-    out[transparent, :3] = 0
-    out[transparent, 3] = 0
-    return Image.fromarray(out, 'RGBA')
+EPIC_LOGO_PATH = os.path.join(os.path.dirname(__file__), 'assets', 'epic-logo-full.png')
 
 
 def embed_epic_mark(img, w, h, palette_rgb, seed):
@@ -163,8 +116,8 @@ def embed_epic_mark(img, w, h, palette_rgb, seed):
         return img
     rnd = mulberry32((seed ^ 0xE91CCA) & 0xFFFFFFFF)
     px_per_inch = w / 8.5
-    icon_size = int(1.4 * px_per_inch)
-    recolored = _recolor_icon(palette_rgb).resize(
+    icon_size = int(1.5 * px_per_inch)
+    logo = Image.open(EPIC_LOGO_PATH).convert('RGBA').resize(
         (icon_size, icon_size), Image.LANCZOS
     )
 
@@ -174,7 +127,7 @@ def embed_epic_mark(img, w, h, palette_rgb, seed):
         qy = q // 2
         x = int((qx * 0.5 + 0.10 + rnd() * 0.30) * w - icon_size / 2)
         y = int((qy * 0.5 + 0.10 + rnd() * 0.30) * h - icon_size / 2)
-        img.paste(recolored, (x, y), recolored)
+        img.paste(logo, (x, y), logo)
     return img
 
 
