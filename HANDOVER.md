@@ -3,6 +3,10 @@
 *EPIC Aerospace Recon Division — Camo Generator Tool*
 *Last updated: 2026-05-20 by Will Kurtz (wkurtz97@gmail.com)*
 
+> This file lives in two places:
+> - GitHub repo: https://github.com/wkur-z/spectral-scanner/blob/main/HANDOVER.md
+> - Shared Drive folder (same place student submissions land)
+
 This document is written for a future instructor who didn't build the app
 and may not be a coder. It covers running camp, basic maintenance, and
 what to do if Will (the original author) leaves and you're taking over.
@@ -54,16 +58,31 @@ Hand this part to students or read it aloud:
 
 1. Go to **https://wkur-z.github.io/spectral-scanner/**
 2. Wait for the boot sequence (the "POWER-ON SELF TEST" text).
-3. Type your **callsign** (your name).
+3. Type your **operative callsign** — format is `FIRST LAST :: CALLSIGN`,
+   e.g. `JANE DOE :: BEARCAT` or `SAM SMITH :: AIRMASTER`. The
+   placeholder text in the field shows the format.
 4. Type the **4 hex codes** from your Arduino RGB sensor reading.
-   - Or click `LOAD EPIC TEST PALETTE` to try it with EPIC's brand colors.
-5. Pick one of the 4 **camo patterns**.
-6. Click `EXECUTE` — preview shows your camo.
-7. Click `RECALIBRATE` to roll a new random layout with the same colors.
+   - Or click the amber **`▶ LOAD EPIC TEST PALETTE`** button to fill in
+     EPIC's brand colors (white, orange, navy, green) for a quick demo.
+     This also auto-fills the callsign with `OPERATIVE_TEST` if blank,
+     so EXECUTE activates in one click.
+5. Pick one of the 4 **camo patterns** (MARPAT-D, WOODLAND-7B,
+   FRACTAL-G, TERRAIN-X).
+6. Click `EXECUTE` — preview shows your camo with the EPIC Campus
+   logo stamped in 4 places (full color, scattered randomly).
+7. Click `RECALIBRATE` to roll a new random layout — same colors, new
+   pattern, EPIC logos move to new positions.
 8. When you're happy, click `▲ TRANSMIT TO COMMAND ▲` — done. Your PDF
    is now in the camp's folder.
 
 Students never sign in to Google. They never need an account.
+
+### Why the EPIC logos?
+
+Every generated camo has 4 copies of the official EPIC Campus logo
+stamped on it (mountain icon + "EPIC CAMPUS" wordmark + "EXPLORATIVE
+PATHWAYS FOR INNOVATIVE CAREERS" tagline). When students take their
+sticker-decorated planes home, the EPIC branding goes with them.
 
 ---
 

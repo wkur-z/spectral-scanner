@@ -26,8 +26,16 @@
 const FOLDER_ID = 'PASTE_FOLDER_ID_HERE';
 
 /**
- * POST handler — receives a JSON payload with a base64-encoded PDF.
+ * POST handler — receives a JSON payload with a base64-encoded file.
  * Sent as Content-Type: text/plain to avoid CORS preflight.
+ *
+ * Payload fields:
+ *   filename   — required, used as the Drive file name
+ *   pdfBase64  — required, base64-encoded file bytes (kept this
+ *                name for backward compatibility; works for any
+ *                file type, not just PDFs)
+ *   mimeType   — optional, defaults to 'application/pdf'. Examples:
+ *                'text/markdown', 'text/plain', 'image/png'.
  */
 function doPost(e) {
   try {
@@ -42,10 +50,11 @@ function doPost(e) {
     // Strip anything weird; allow only A-Z a-z 0-9 . _ -
     const filename = String(rawName).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120);
     const b64 = data.pdfBase64;
-    if (!b64) throw new Error('NO_PDF_DATA');
+    if (!b64) throw new Error('NO_FILE_DATA');
+    const mimeType = data.mimeType || 'application/pdf';
 
     const bytes = Utilities.base64Decode(b64);
-    const blob = Utilities.newBlob(bytes, 'application/pdf', filename);
+    const blob = Utilities.newBlob(bytes, mimeType, filename);
     const folder = DriveApp.getFolderById(FOLDER_ID);
     const file = folder.createFile(blob);
 
